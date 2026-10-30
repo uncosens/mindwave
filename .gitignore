@@ -1,0 +1,7 @@
+/build/
+/app/build/
+/.gradle/
+/.kotlin/
+/local.properties
+# Speech model is downloaded by scripts/fetch-model.ps1
+/app/src/main/assets/model-en-us/
