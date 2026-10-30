@@ -16,10 +16,13 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -34,6 +37,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.uncosens.mindwave.MainViewModel
+import com.uncosens.mindwave.analysis.Analyzer
+import com.uncosens.mindwave.analysis.FeatureExtractor
 import com.uncosens.mindwave.data.CheckIn
 import java.time.LocalDate
 import java.time.LocalTime
@@ -182,6 +187,7 @@ private fun MiniBar(label: String, t: Float, color: Color) = Row(Modifier.paddin
 @Composable
 fun ResultScreen(vm: MainViewModel, c: CheckIn) = Page {
     val isToday = c.date == LocalDate.now().toString()
+    var detail by remember(c) { mutableStateOf<ShownMetric?>(null) }
     val c3 = LocalMindwaveColors.current
     TopBar("✕", vm::goHome) {
         Text(if (isToday) "Today" else LocalDate.parse(c.date).format(DateTimeFormatter.ofPattern("MMM d")), style = MaterialTheme.typography.titleLarge)
@@ -206,13 +212,15 @@ fun ResultScreen(vm: MainViewModel, c: CheckIn) = Page {
         Card {
             shownMetrics.forEach { m ->
                 val z = m.z(c)
-                Row(Modifier.fillMaxWidth().padding(top = Dimens.xs), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text(m.label, style = MaterialTheme.typography.titleMedium)
-                    Muted(m.phrase(z))
+                Column(Modifier.fillMaxWidth().clickable { detail = m }) {
+                    Row(Modifier.fillMaxWidth().padding(top = Dimens.xs), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text(m.label, style = MaterialTheme.typography.titleMedium)
+                        Muted(m.phrase(z))
+                    }
+                    Spacer(Modifier.height(6.dp))
+                    DeviationBar(z)
+                    Spacer(Modifier.height(Dimens.xs))
                 }
-                Spacer(Modifier.height(6.dp))
-                DeviationBar(z)
-                Spacer(Modifier.height(Dimens.xs))
             }
         }
         Spacer(Modifier.height(Dimens.l))
@@ -221,6 +229,45 @@ fun ResultScreen(vm: MainViewModel, c: CheckIn) = Page {
     }
     PrimaryButton("Done", vm::goHome)
     Spacer(Modifier.height(Dimens.l))
+
+    detail?.let { MetricSheet(vm, c, it) { detail = null } }
+}
+
+// Today's values next to the usual ones, and this metric over the last 14 check-ins.
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun MetricSheet(vm: MainViewModel, c: CheckIn, m: ShownMetric, onDismiss: () -> Unit) = ModalBottomSheet(
+    onDismiss,
+    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+    shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+) {
+    // Values from older feature versions are on another scale, so they get no usual value.
+    val base = remember(c.date) { vm.baselineBefore(c.date).takeIf { c.anchor.version == FeatureExtractor.VERSION } }
+    val recent = vm.data.checkIns.filter { it.date <= c.date }.takeLast(Analyzer.WINDOW_DAYS)
+    val muted = MaterialTheme.colorScheme.onSurfaceVariant
+    Column(Modifier.fillMaxWidth().padding(horizontal = Dimens.l).padding(bottom = Dimens.l)) {
+        Text(m.label, style = MaterialTheme.typography.titleLarge)
+        Muted(m.phrase(m.z(c)), align = TextAlign.Start)
+        Spacer(Modifier.height(Dimens.m))
+        Row(Modifier.fillMaxWidth()) {
+            Spacer(Modifier.weight(1f))
+            Text("Today", Modifier.width(88.dp), style = MaterialTheme.typography.labelMedium, color = muted, textAlign = TextAlign.End)
+            Text("Usual", Modifier.width(88.dp), style = MaterialTheme.typography.labelMedium, color = muted, textAlign = TextAlign.End)
+        }
+        m.metrics.forEach { metric ->
+            Row(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
+                Text(metric.label, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                Text(metric.get(c.anchor)?.let(metric::format) ?: "—", Modifier.width(88.dp),
+                    style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.End)
+                Text(base?.center(metric)?.let(metric::format) ?: "—", Modifier.width(88.dp),
+                    style = MaterialTheme.typography.bodyMedium, color = muted, textAlign = TextAlign.End)
+            }
+        }
+        Spacer(Modifier.height(Dimens.m))
+        Text("Last ${recent.size} check-ins", style = MaterialTheme.typography.labelMedium, color = muted)
+        Spacer(Modifier.height(Dimens.xs))
+        Sparkline(recent.map(m.z))
+    }
 }
 
 @Composable

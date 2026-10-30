@@ -1,6 +1,12 @@
 package com.uncosens.mindwave.ui
 
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -9,6 +15,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -24,8 +31,10 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
@@ -34,12 +43,17 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextOverflow
 import com.uncosens.mindwave.MainViewModel
+import com.uncosens.mindwave.Screen
 import com.uncosens.mindwave.analysis.TextTools
 import com.uncosens.mindwave.data.Sentences
 
@@ -48,16 +62,16 @@ private val StepOrb = 200.dp
 // Recording cap for reading a text: generous time per syllable, at least 12 s.
 private fun readLimit(text: String) = (TextTools.syllables(text) * 0.4f + 6f).toInt().coerceAtLeast(12)
 
-// One voice capture step: label, prompt, orb, hint or problem, one button.
+// What one step shows above the orb. `reading` is the text to read aloud, if any.
+private data class StepText(val label: String, val prompt: String, val sub: String?, val reading: String?, val small: Boolean)
+
+// One voice capture step: label, prompt, orb, hint or problem, one button. Only called from VoiceStepScreen.
 @Composable
-fun VoiceStep(
+private fun VoiceStep(
     vm: MainViewModel,
     top: @Composable () -> Unit,
     onClose: () -> Unit,
-    label: String,
-    prompt: String,
-    promptStyle: TextStyle = MaterialTheme.typography.headlineMedium,
-    sub: String? = null,
+    text: StepText,
     transcript: String? = null,
     idleHint: String = "Tap the orb and read aloud",
     startLabel: String = "Start reading",
@@ -68,15 +82,23 @@ fun VoiceStep(
     idleActions: @Composable () -> Unit = {},
 ) = Page {
     var elapsed by remember { mutableFloatStateOf(0f) }
+    var quiet by remember { mutableStateOf(false) }
     LaunchedEffect(vm.recording) {
         elapsed = 0f
+        quiet = false
         if (!vm.recording) return@LaunchedEffect
         val start = withFrameNanos { it }
         while (vm.recording) {
             withFrameNanos { elapsed = (it - start) / 1e9f }
+            quiet = vm.recorder.tooQuiet
             if (elapsed >= maxSeconds) vm.stopRecording()
         }
     }
+    // Words read so far; never goes backwards within a take.
+    val target = remember(text.reading) { text.reading?.let(TextTools::words).orEmpty() }
+    var read by remember(text.reading) { mutableIntStateOf(0) }
+    LaunchedEffect(vm.recording) { if (vm.recording) read = 0 }
+    LaunchedEffect(vm.liveText) { read = maxOf(read, TextTools.readProgress(target, vm.liveText)) }
     val canFinish = elapsed >= minSeconds
     val toggle = {
         when {
@@ -93,11 +115,27 @@ fun VoiceStep(
     }
 
     TopBar("✕", onClose, top)
-    Spacer(Modifier.height(if (ring) Dimens.l else Dimens.xxl))
-    Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    Spacer(Modifier.height(Dimens.xs))
-    Text(prompt, Modifier.widthIn(max = 360.dp), style = promptStyle, textAlign = TextAlign.Center)
-    sub?.let { Spacer(Modifier.height(Dimens.xs)); Muted(it) }
+    val gap by animateDpAsState(if (ring) Dimens.l else Dimens.xxl, tween(Motion.DUR_MEDIUM, easing = Motion.EaseStandard), label = "gap")
+    Spacer(Modifier.height(gap))
+    val rise = with(LocalDensity.current) { 24.dp.roundToPx() }
+    AnimatedContent(
+        text,
+        transitionSpec = {
+            (fadeIn(tween(Motion.DUR_MEDIUM)) + slideInVertically(tween(Motion.DUR_MEDIUM, easing = Motion.EaseStandard)) { rise }) togetherWith
+                fadeOut(tween(Motion.DUR_MEDIUM))
+        },
+        label = "step",
+    ) { t ->
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(t.label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(Modifier.height(Dimens.xs))
+            val style = if (t.small) MaterialTheme.typography.bodyLarge else MaterialTheme.typography.headlineMedium
+            // Dim unread words only while this take is being heard.
+            val progress = if (t.reading != null && t == text && (vm.recording || vm.busy)) read else null
+            ReadingText(t.prompt, progress, Modifier.widthIn(max = 360.dp), style)
+            t.sub?.let { Spacer(Modifier.height(Dimens.xs)); Muted(it) }
+        }
+    }
     Spacer(Modifier.weight(1f))
     Box(contentAlignment = Alignment.Center) {
         if (ring) {
@@ -137,6 +175,7 @@ fun VoiceStep(
             when {
                 vm.busy -> "One moment…"
                 !vm.recording -> idleHint
+                quiet -> "I can barely hear you — move a little closer"
                 !ring -> "Listening…"
                 canFinish -> "Tap Done anytime"
                 else -> "Keep going…"
@@ -175,44 +214,74 @@ private fun StopDialog(vm: MainViewModel) {
     )
 }
 
-@Composable
-fun CalibrateScreen(vm: MainViewModel, round: Int, onNeedPermission: (() -> Unit) -> Unit) = VoiceStep(
-    vm, top = { Text("$round of 3", style = MaterialTheme.typography.labelLarge) }, onClose = vm::goHome,
-    label = "Setup", prompt = "“${Sentences.ANCHOR}”", maxSeconds = readLimit(Sentences.ANCHOR), onNeedPermission = onNeedPermission,
-)
+private fun reading(label: String, text: String) = StepText(label, "“$text”", null, text, small = false)
 
+// Calibration rounds and check-in steps A-C. VoiceStep is called from one place so the
+// orb keeps its state across steps; a call per branch would recreate it.
 @Composable
-fun AnchorScreen(vm: MainViewModel, onNeedPermission: (() -> Unit) -> Unit) = VoiceStep(
-    vm, top = { StepDots(1) }, onClose = { vm.confirmStop = true },
-    label = "Warm up", prompt = "“${Sentences.ANCHOR}”", maxSeconds = readLimit(Sentences.ANCHOR), onNeedPermission = onNeedPermission,
-)
-
-@Composable
-fun DailyScreen(vm: MainViewModel, onNeedPermission: (() -> Unit) -> Unit) = VoiceStep(
-    vm, top = { StepDots(2) }, onClose = { vm.confirmStop = true },
-    label = "Sentence of the day", prompt = "“${vm.dailySentence}”", maxSeconds = readLimit(vm.dailySentence), onNeedPermission = onNeedPermission,
-)
-
-@Composable
-fun FreeTalkScreen(vm: MainViewModel, onNeedPermission: (() -> Unit) -> Unit) {
+fun VoiceStepScreen(vm: MainViewModel, screen: Screen, onNeedPermission: (() -> Unit) -> Unit) {
     val passage = vm.passage
-    if (passage == null) VoiceStep(
-        vm, top = { StepDots(3) }, onClose = { vm.confirmStop = true },
-        label = "Talk freely", prompt = vm.freeTalkPrompt, sub = "Anything is fine. 10–20 s.", transcript = vm.liveText,
-        idleHint = "Tap the orb and start talking", startLabel = "Start talking",
-        minSeconds = 10, maxSeconds = 20, ring = true, onNeedPermission = onNeedPermission,
+    val talk = screen == Screen.FreeTalk && passage == null
+    val text = when {
+        screen is Screen.Calibrate -> reading("Setup", Sentences.ANCHOR)
+        screen == Screen.ReadAnchor -> reading("Warm up", Sentences.ANCHOR)
+        screen == Screen.ReadDaily -> reading("Sentence of the day", vm.dailySentence)
+        talk -> StepText("Talk freely", vm.freeTalkPrompt, "Anything is fine. 10–20 s.", null, small = false)
+        else -> StepText("Read aloud", passage!!, null, passage, small = true)
+    }
+    VoiceStep(
+        vm,
+        top = {
+            when (screen) {
+                is Screen.Calibrate -> Text("${screen.round} of 3", style = MaterialTheme.typography.labelLarge)
+                Screen.ReadAnchor -> StepDots(1)
+                Screen.ReadDaily -> StepDots(2)
+                else -> StepDots(3)
+            }
+        },
+        onClose = if (screen is Screen.Calibrate) vm::goHome else { { vm.confirmStop = true } },
+        text = text,
+        // Reading steps show progress through the highlight, so only free talk shows a transcript.
+        transcript = if (talk) vm.liveText else null,
+        idleHint = if (talk) "Tap the orb and start talking" else "Tap the orb and read aloud",
+        startLabel = if (talk) "Start talking" else "Start reading",
+        minSeconds = if (talk) 10 else 0,
+        maxSeconds = if (talk) 20 else readLimit(text.reading!!),
+        ring = talk,
+        onNeedPermission = onNeedPermission,
     ) {
-        TextButton(onClick = vm::choosePassage) { Text("Rather not talk? Read a passage") }
-    } else VoiceStep(
-        vm, top = { StepDots(3) }, onClose = { vm.confirmStop = true },
-        label = "Read aloud", prompt = passage, promptStyle = MaterialTheme.typography.bodyLarge, transcript = vm.liveText,
-        maxSeconds = readLimit(passage), onNeedPermission = onNeedPermission,
-    ) {
-        Row {
-            TextButton(onClick = vm::choosePassage) { Text("Another passage") }
-            TextButton(onClick = vm::talkInstead) { Text("Talk instead") }
+        when {
+            screen != Screen.FreeTalk -> Unit
+            talk -> TextButton(onClick = vm::choosePassage) { Text("Rather not talk? Read a passage") }
+            else -> Row {
+                TextButton(onClick = vm::choosePassage) { Text("Another passage") }
+                TextButton(onClick = vm::talkInstead) { Text("Talk instead") }
+            }
         }
     }
+}
+
+// Text to read aloud. With progress, unread words are dimmed and fade in as they are read.
+// It stays one text node, so TalkBack reads the whole sentence.
+@Composable
+private fun ReadingText(text: String, progress: Int?, modifier: Modifier, style: TextStyle) {
+    val tokens = remember(text) { text.split(' ') }
+    // Words up to and including each token, so punctuation-only tokens follow their neighbour.
+    val ends = remember(text) { tokens.runningFold(0) { n, t -> n + TextTools.words(t).size }.drop(1) }
+    val color = MaterialTheme.colorScheme.onSurface
+    val alphas = key(text) {
+        tokens.indices.map { i ->
+            val on = progress == null || ends[i] <= progress
+            animateFloatAsState(if (on) 1f else 0.38f, tween(200), label = "word").value
+        }
+    }
+    val shown = buildAnnotatedString {
+        tokens.forEachIndexed { i, t ->
+            if (i > 0) append(' ')
+            withStyle(SpanStyle(color = color.copy(alpha = alphas[i]))) { append(t) }
+        }
+    }
+    Text(shown, modifier, style = style, textAlign = TextAlign.Center)
 }
 
 @Composable

@@ -1,5 +1,6 @@
 package com.uncosens.mindwave.ui
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -24,6 +25,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.uncosens.mindwave.analysis.Metric
@@ -82,18 +86,56 @@ fun Muted(text: String, modifier: Modifier = Modifier, align: TextAlign = TextAl
     Text(text, modifier, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = align)
 
 // Metrics as shown to the user. Tremor merges the two tremor measures.
-class ShownMetric(val label: String, val chip: String, val up: String, val down: String, val z: (CheckIn) -> Float)
+class ShownMetric(
+    val label: String, val chip: String, val up: String, val down: String,
+    val metrics: List<Metric>, // what the detail sheet lists values for
+    val z: (CheckIn) -> Float,
+)
 
 private fun CheckIn.z(m: Metric) = z[m.name] ?: 0f
 
 val shownMetrics = listOf(
-    ShownMetric("Tone", "Tone", "brighter", "darker") { it.z(Metric.ENERGY) },
-    ShownMetric("Speech rate", "Speech rate", "faster", "slower") { it.z(Metric.RATE) },
-    ShownMetric("Pitch", "Pitch", "higher", "lower") { it.z(Metric.PITCH) },
-    ShownMetric("Pitch variety", "Pitch variety", "more varied", "flatter") { it.z(Metric.PITCH_VAR) },
-    ShownMetric("Pauses & breath", "Pauses", "more pauses", "fewer pauses") { it.z(Metric.PAUSES) },
-    ShownMetric("Voice tremor", "Tremor", "shakier", "steadier") { (it.z(Metric.JITTER) + it.z(Metric.SHIMMER)) / 2 },
+    ShownMetric("Tone", "Tone", "brighter", "darker", listOf(Metric.ENERGY)) { it.z(Metric.ENERGY) },
+    ShownMetric("Speech rate", "Speech rate", "faster", "slower", listOf(Metric.RATE)) { it.z(Metric.RATE) },
+    ShownMetric("Pitch", "Pitch", "higher", "lower", listOf(Metric.PITCH)) { it.z(Metric.PITCH) },
+    ShownMetric("Pitch variety", "Pitch variety", "more varied", "flatter", listOf(Metric.PITCH_VAR)) { it.z(Metric.PITCH_VAR) },
+    ShownMetric("Pauses & breath", "Pauses", "more pauses", "fewer pauses", listOf(Metric.PAUSES)) { it.z(Metric.PAUSES) },
+    ShownMetric("Voice tremor", "Tremor", "shakier", "steadier", listOf(Metric.JITTER, Metric.SHIMMER)) {
+        (it.z(Metric.JITTER) + it.z(Metric.SHIMMER)) / 2
+    },
 )
+
+// A metric value with its unit, e.g. "182 Hz".
+fun Metric.format(v: Float): String = when (this) {
+    Metric.PITCH -> "%.0f Hz".format(v)
+    Metric.PITCH_VAR -> "%.1f st".format(v)
+    Metric.ENERGY -> "%.1f dB".format(v).replace('-', '−')
+    Metric.RATE -> "%.1f syl/s".format(v)
+    Metric.PAUSES -> "%.0f %%".format(v * 100)
+    Metric.JITTER -> "%.2f %%".format(v)
+    Metric.SHIMMER -> "%.1f %%".format(v)
+}
+
+// Signed number with a real minus sign, e.g. "+0.3" or "−1.2".
+fun signed(v: Float): String = "%+.1f".format(v).replace('-', '−')
+
+// Small z-score line with the ±1σ band; the last point is marked.
+@Composable
+fun Sparkline(values: List<Float>, modifier: Modifier = Modifier) {
+    val line = LocalMindwaveColors.current.metric
+    val band = LocalMindwaveColors.current.deviationBand
+    Canvas(modifier.fillMaxWidth().height(64.dp)) {
+        fun y(v: Float) = size.height * (1f - (v.coerceIn(-2.5f, 2.5f) + 2.5f) / 5f)
+        drawRect(band, Offset(0f, y(1f)), Size(size.width, y(-1f) - y(1f)))
+        if (values.isEmpty()) return@Canvas
+        val pad = 5.dp.toPx()
+        fun x(i: Int) = if (values.size == 1) size.width / 2 else pad + (size.width - 2 * pad) * i / (values.size - 1)
+        for (i in 1 until values.size) {
+            drawLine(line, Offset(x(i - 1), y(values[i - 1])), Offset(x(i), y(values[i])), 2.dp.toPx(), StrokeCap.Round)
+        }
+        drawCircle(line, 4.dp.toPx(), Offset(x(values.lastIndex), y(values.last())))
+    }
+}
 
 fun ShownMetric.phrase(z: Float): String = when {
     abs(z) < 0.5f -> "As usual"

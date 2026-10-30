@@ -77,9 +77,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val calibrated get() = data.calibration.isNotEmpty() && data.calibrationAnchor == Sentences.ANCHOR &&
         data.calibration.all { it.version == FeatureExtractor.VERSION }
 
-    // Earlier days that can join the baseline and the personal weights.
-    private fun comparable(c: CheckIn, today: String) =
-        c.date != today && c.anchorText == Sentences.ANCHOR && c.anchor.version == FeatureExtractor.VERSION
+    // Days before `date` that can join the baseline and the personal weights.
+    private fun comparable(c: CheckIn, date: String) =
+        c.date < date && c.anchorText == Sentences.ANCHOR && c.anchor.version == FeatureExtractor.VERSION
+
+    // The anchor baseline as it was on that day, for showing usual values.
+    fun baselineBefore(date: String) =
+        Baseline((data.calibration + data.checkIns.filter { comparable(it, date) }.map { it.anchor }).takeLast(Analyzer.WINDOW_DAYS))
 
     // The user's own pitch centers the orb's color response.
     val basePitchHz: Float
@@ -123,12 +127,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun startRecording() {
         problem = null
-        if (screen == Screen.FreeTalk) {
-            liveText = ""
-            val l = transcriber!!.Live { text -> viewModelScope.launch { liveText = text } }
-            live = l
-            recorder.listener = l::feed
-        }
+        // Live text drives the free-talk transcript and the read-progress highlight.
+        liveText = ""
+        val l = transcriber!!.Live { text -> viewModelScope.launch { liveText = text } }
+        live = l
+        recorder.listener = l::feed
         recorder.start()
         recording = true
     }
@@ -162,11 +165,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         live = null
         busy = true
         viewModelScope.launch {
+            // Reading steps need word timings, so they transcribe the whole take again.
+            val talk = step == Screen.FreeTalk
             val result = withContext(Dispatchers.Default) {
-                stream?.let { Transcriber.Result(it.finish(), emptyList()) } ?: transcriber!!.transcribe(pcm)
+                if (talk && stream != null) Transcriber.Result(stream.finish(), emptyList())
+                else { stream?.cancel(); transcriber!!.transcribe(pcm) }
             }
             val heard = result.text
-            if (stream != null) liveText = heard
+            if (talk) liveText = heard
             when (step) {
                 is Screen.Calibrate -> measure(pcm, Sentences.ANCHOR, result)?.let { f ->
                     calibration += f

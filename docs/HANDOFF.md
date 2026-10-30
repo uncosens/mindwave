@@ -53,8 +53,12 @@ read with the current anchor join the baseline.
 ## Done and verified
 
 - `gradlew testDebugUnitTest assembleDebug` passed (8 unit tests) before the jitter/shimmer
-  change. After it, the 10 unit tests were run only on a plain JVM (the analysis code has no
-  Android dependencies); the Android build has not been run since. Run it first.
+  change. The Android build has not been run since (the cloud container could not reach
+  the Android SDK). Run it first. What was checked instead:
+  - The 11 unit tests pass on a plain JVM (the analysis code has no Android dependencies).
+  - All app code type-checks against Compose Desktop 1.6.11 with stubs for Android classes.
+    The only errors were `interactionSource = null`, which needs Compose 1.7+ (the app's BOM has it).
+  - None of the UI added after that (see "UI items built" below) has been seen on screen.
 - Installed on a Galaxy Tab S7 (SM-T870, Android 13): the Vosk model loads
   and the welcome screen and orb render correctly.
 
@@ -86,10 +90,12 @@ the orb's reaction to a real voice have never been seen working.
 3. **Optional, not approved by the user yet:** add CPP/CPPS as a voice clarity metric
    and merge jitter, shimmer and CPP into one voice-quality score for stability
    (similar to AVQI), so the same thing is not counted three times.
-4. Design items not built yet (see `design/DESIGN.md`): read-progress word highlight,
-   step transitions with a fixed orb, live "too quiet" hint, metric detail sheet
-   and chart tooltips, captured pulse. The app icon is not set; logo concepts
-   are in `design/logo/`.
+4. Check the new UI on a phone (see "UI items built" below), then the design items still
+   missing (see `design/DESIGN.md`): captured pulse (4.3), the Analyzing → Result shared-element
+   orb (4.7), result reveal and chart draw-in motion (6), the History "Day detail" bottom sheet
+   (the tooltip opens the Result screen instead), and the read-progress fallback from voiced
+   time when no recognizer words arrive. The app icon is not set; logo concepts are in
+   `design/logo/`.
 
 The three accuracy items from the research are already implemented:
 per-user weights from mood (`PersonalWeights`, starts after 28 check-ins),
@@ -116,10 +122,32 @@ Compared with Praat (via parselmouth 0.4.7) on 7 synthetic source-filter voices
 (100-300 Hz, glides, 20-25 dB SNR noise): jitter within 1 %, shimmer within 1-4 % when clean
 and 5-10 % higher with noise.
 
+## UI items built (not yet seen on a device)
+
+- **Read-progress highlight** (DESIGN 4.4): every step now streams to Vosk while recording.
+  `TextTools.readProgress` matches heard words in order to the next 4 target words;
+  `ReadingText` dims unread words to 38 % and fades each in over 200 ms. It is one text node.
+  Reading steps still re-transcribe the whole take afterwards for word timings, so Vosk runs
+  twice on those steps; check that the delay after "Done" is acceptable.
+  Passage mode no longer shows the transcript, since the highlight shows progress.
+- **Step transitions** (DESIGN 3, 6): all voice steps go through `VoiceStepScreen`, which calls
+  `VoiceStep` once so the orb keeps its state. The step text cross-fades with a 24 dp rise
+  (300 ms). Other screens use shared-axis X in `MainActivity` (fade + 30 dp slide, 500 ms);
+  voice steps share one transition key so they do not slide.
+- **Metric detail sheet** (DESIGN 4.8): tap a row on the Result screen. It shows today's
+  anchor value, the usual value (median of that day's anchor baseline,
+  `MainViewModel.baselineBefore`) and a sparkline of the last 14 check-ins. The design's
+  one-line metric explanations are left out because of the "no how-it-works text" rule.
+- **Chart tooltip** (DESIGN 4.9): tap a chart to pick the nearest day; a guide line and a
+  tooltip appear, and tapping the tooltip opens that day's result.
+- **Live too-quiet hint** (DESIGN 7): `Recorder.tooQuiet` is true after 3 s below level 0.08
+  (about -56 dBFS); the hint becomes "I can barely hear you — move a little closer".
+  A quiet room before the user starts talking can also trigger it; tune on a device.
+
 ## Known issues
 
-- Passage mode on small phones: the passage, orb and transcript share one screen
-  and may feel cramped.
+- Passage mode on small phones: the passage and orb share one screen and may feel
+  cramped (the transcript is gone from passage mode, which helps).
 - `vosk-android` 0.3.47 native libraries may not be 16 KB page aligned, which
   Google Play requires for new apps targeting Android 15+. Fine for local testing.
 - Sentiment is a small word list. A small on-device text model would be better.

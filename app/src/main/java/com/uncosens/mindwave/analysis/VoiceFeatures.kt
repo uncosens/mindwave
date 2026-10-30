@@ -113,6 +113,18 @@ object TextTools {
         maxOf(n, 1)
     }
 
+    // How many words of the target have been read, from a live transcript. Heard words are matched
+    // in order to the next few target words; skipped target words count as read once a later one matches.
+    fun readProgress(target: List<String>, heard: String): Int {
+        var read = 0
+        for (h in words(heard)) {
+            for (j in read until minOf(read + 4, target.size)) {
+                if (target[j] == h) { read = j + 1; break }
+            }
+        }
+        return read
+    }
+
     // 1 - word error rate, clamped to 0..1.
     fun accuracy(reference: String, heard: String): Float {
         val r = words(reference); val h = words(heard)

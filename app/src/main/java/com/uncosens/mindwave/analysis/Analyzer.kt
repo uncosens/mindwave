@@ -29,6 +29,9 @@ class Baseline(samples: List<VoiceFeatures>) {
         maxOf(median(values.getValue(m).map { abs(it - c) }) * 1.4826f, m.minSpread(c))
     }
 
+    // Median of the baseline, or null when no sample has this metric.
+    fun center(m: Metric): Float? = if (values.getValue(m).isEmpty()) null else center.getValue(m)
+
     // Null when today's value or every baseline value is missing.
     fun z(m: Metric, f: VoiceFeatures): Float? {
         val v = m.get(f) ?: return null

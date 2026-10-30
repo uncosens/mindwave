@@ -12,25 +12,38 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.dp
 import com.uncosens.mindwave.ui.AnalyzingScreen
-import com.uncosens.mindwave.ui.AnchorScreen
-import com.uncosens.mindwave.ui.CalibrateScreen
 import com.uncosens.mindwave.ui.CalibrationIntroScreen
-import com.uncosens.mindwave.ui.DailyScreen
-import com.uncosens.mindwave.ui.FreeTalkScreen
 import com.uncosens.mindwave.ui.HistoryScreen
 import com.uncosens.mindwave.ui.HomeScreen
 import com.uncosens.mindwave.ui.MessageScreen
 import com.uncosens.mindwave.ui.MicDeniedScreen
 import com.uncosens.mindwave.ui.MindwaveTheme
 import com.uncosens.mindwave.ui.MoodScreen
+import com.uncosens.mindwave.ui.Motion
 import com.uncosens.mindwave.ui.ReadyScreen
 import com.uncosens.mindwave.ui.ResultScreen
 import com.uncosens.mindwave.ui.SettingsScreen
+import com.uncosens.mindwave.ui.VoiceStepScreen
 import com.uncosens.mindwave.ui.WelcomeScreen
+
+private fun transitionKey(s: Screen): Any = when (s) {
+    is Screen.Calibrate, Screen.ReadAnchor, Screen.ReadDaily, Screen.FreeTalk -> "voice"
+    else -> s
+}
 
 class MainActivity : ComponentActivity() {
     private val vm: MainViewModel by viewModels()
@@ -75,22 +88,33 @@ class MainActivity : ComponentActivity() {
                     }
                     return@MindwaveTheme
                 }
-                when (s) {
-                    Screen.Loading -> MessageScreen("Preparing…")
-                    is Screen.Error -> MessageScreen(s.text)
-                    Screen.Welcome -> WelcomeScreen(vm, ::withMic)
-                    Screen.CalibrationIntro -> CalibrationIntroScreen(vm)
-                    is Screen.Calibrate -> CalibrateScreen(vm, s.round, ::withMic)
-                    Screen.Ready -> ReadyScreen(vm)
-                    Screen.Home -> HomeScreen(vm)
-                    Screen.ReadAnchor -> AnchorScreen(vm, ::withMic)
-                    Screen.ReadDaily -> DailyScreen(vm, ::withMic)
-                    Screen.FreeTalk -> FreeTalkScreen(vm, ::withMic)
-                    Screen.Mood -> MoodScreen(vm)
-                    Screen.Analyzing -> AnalyzingScreen(vm)
-                    is Screen.Result -> ResultScreen(vm, s.checkIn)
-                    Screen.History -> HistoryScreen(vm)
-                    Screen.Settings -> SettingsScreen(vm, version)
+                // Shared-axis X between screens. Voice steps share one key, so moving between them
+                // only changes the text and the orb stays where it is.
+                val slide = with(LocalDensity.current) { 30.dp.roundToPx() }
+                AnimatedContent(
+                    s,
+                    contentKey = ::transitionKey,
+                    transitionSpec = {
+                        val spec = tween<Float>(Motion.DUR_LONG, easing = Motion.EaseStandard)
+                        val move = tween<IntOffset>(Motion.DUR_LONG, easing = Motion.EaseStandard)
+                        (fadeIn(spec) + slideInHorizontally(move) { slide }) togetherWith (fadeOut(spec) + slideOutHorizontally(move) { -slide })
+                    },
+                    label = "screen",
+                ) { shown ->
+                    when (shown) {
+                        Screen.Loading -> MessageScreen("Preparing…")
+                        is Screen.Error -> MessageScreen(shown.text)
+                        Screen.Welcome -> WelcomeScreen(vm, ::withMic)
+                        Screen.CalibrationIntro -> CalibrationIntroScreen(vm)
+                        is Screen.Calibrate, Screen.ReadAnchor, Screen.ReadDaily, Screen.FreeTalk -> VoiceStepScreen(vm, shown, ::withMic)
+                        Screen.Ready -> ReadyScreen(vm)
+                        Screen.Home -> HomeScreen(vm)
+                        Screen.Mood -> MoodScreen(vm)
+                        Screen.Analyzing -> AnalyzingScreen(vm)
+                        is Screen.Result -> ResultScreen(vm, shown.checkIn)
+                        Screen.History -> HistoryScreen(vm)
+                        Screen.Settings -> SettingsScreen(vm, version)
+                    }
                 }
             }
         }

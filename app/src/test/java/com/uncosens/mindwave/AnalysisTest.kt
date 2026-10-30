@@ -65,6 +65,17 @@ class AnalysisTest {
         assertEquals(4, TextTools.syllables("reading these words"))
     }
 
+    @Test fun readProgressFollowsTheText() {
+        val target = TextTools.words("“We were away all day, and we rode along the valley road.”")
+        assertEquals(0, TextTools.readProgress(target, ""))
+        assertEquals(4, TextTools.readProgress(target, "we were away all"))
+        // A skipped word counts as read once a later one is heard; noise words are ignored.
+        assertEquals(4, TextTools.readProgress(target, "we uh away all"))
+        assertEquals(12, TextTools.readProgress(target, "we were away all day and we rode along the valley road"))
+        // A wrong word far ahead does not jump the highlight.
+        assertEquals(0, TextTools.readProgress(target, "road"))
+    }
+
     @Test fun sentimentDirection() {
         assertTrue(Sentiment.score("I had a really great day and I feel happy").score > 0.4f)
         assertTrue(Sentiment.score("I am stressed and so tired, it was awful").score < -0.4f)
