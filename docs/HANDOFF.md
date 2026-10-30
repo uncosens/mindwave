@@ -42,7 +42,8 @@ read with the current anchor join the baseline.
 | `app/.../MainActivity.kt` | Screen routing, mic permission |
 | `audio/Recorder.kt`, `audio/Dsp.kt` | 16 kHz capture (UNPROCESSED source if supported), RMS, YIN pitch |
 | `speech/Transcriber.kt` | Vosk offline STT, word timestamps, live streaming for free talk |
-| `analysis/VoiceFeatures.kt` | Feature extraction and the quality gate |
+| `analysis/VoiceFeatures.kt` | Feature extraction, the quality gate and `FeatureExtractor.VERSION` |
+| `analysis/Perturbation.kt` | Cycle-level jitter and shimmer (Praat-style cross-correlation marks) |
 | `analysis/Analyzer.kt` | Metrics, robust baseline (median/MAD, 14 days), arousal/valence/stability |
 | `analysis/PersonalWeights.kt` | Ridge regression from mood ratings to voice-valence weights |
 | `analysis/Sentiment.kt` | Small lexicon sentiment for the free-talk transcript |
@@ -51,7 +52,9 @@ read with the current anchor join the baseline.
 
 ## Done and verified
 
-- `gradlew testDebugUnitTest assembleDebug` passes (8 unit tests).
+- `gradlew testDebugUnitTest assembleDebug` passed (8 unit tests) before the jitter/shimmer
+  change. After it, the 10 unit tests were run only on a plain JVM (the analysis code has no
+  Android dependencies); the Android build has not been run since. Run it first.
 - Installed on a Galaxy Tab S7 (SM-T870, Android 13): the Vosk model loads
   and the welcome screen and orb render correctly.
 
@@ -73,23 +76,13 @@ the orb's reaction to a real voice have never been seen working.
    `FeatureExtractor.MIN_SNR_DB` (15 dB), `MIN_SPEECH_DB` (-45 dB),
    `VOICED_SEC_PER_SYLLABLE` (0.09 s), the 0.3 accuracy check in
    `MainViewModel.measure`, and the speaking threshold in `Recorder` (level 0.35).
-2. **Praat-style cycle-level jitter and shimmer** (approved by the user, not started).
-   Today's values are frame-to-frame pitch/amplitude changes from 40 ms YIN frames,
-   which mostly track intonation, not cycle perturbation. A smaller hop does not fix it.
-   - Use YIN F0 per frame as a guide (70-400 Hz) to find voiced runs.
-   - Mark one waveform peak per glottal cycle, searching near the expected period
-     (like Praat "To PointProcess (periodic, cc)"). Refine marks with parabolic
-     interpolation; at 16 kHz a sample is 62.5 us and normal jitter is 30-100 us.
-   - Keep the middle of voiced runs with at least about 5 cycles.
-   - Praat limits: period within the F0 range, period factor 1.3, amplitude factor 1.6.
-   - jitter (local) = mean |T_i - T_(i-1)| / mean T * 100.
-     shimmer (local) = mean |A_i - A_(i-1)| / mean A * 100, A = peak amplitude per cycle.
-   - Needs about 130-190 valid cycles. If fewer, drop the value, not the sample.
-   - Retune `Metric.JITTER` / `Metric.SHIMMER` `minSpread` (new scale: about
-     0.2-1 % jitter, 2-6 % shimmer). Old baselines become invalid: version the
-     feature or trigger recalibration.
-   - Optionally record at 44.1/48 kHz and downsample to 16 kHz for Vosk only.
-   - Check against Praat on a few recordings (sustained /a/ and the anchor).
+2. **Check cycle jitter/shimmer on real voices.** The Praat-style method is built (see
+   "Cycle-level jitter and shimmer" below) but has only been compared with Praat on
+   synthetic voices. Record sustained /a/ and the anchor on the phone, run Praat
+   (`To PointProcess (periodic, cc)` 70-400 Hz, then jitter/shimmer local with 0.0001, 0.02,
+   1.3, 1.6) and compare. Also check how often the anchor and the daily sentence reach
+   `Perturbation.MIN_CYCLES` (130); if the daily sentence often falls short, lower it.
+   Optional, not done: record at 44.1/48 kHz and downsample to 16 kHz for Vosk only.
 3. **Optional, not approved by the user yet:** add CPP/CPPS as a voice clarity metric
    and merge jitter, shimmer and CPP into one voice-quality score for stability
    (similar to AVQI), so the same thing is not counted three times.
@@ -102,6 +95,26 @@ The three accuracy items from the research are already implemented:
 per-user weights from mood (`PersonalWeights`, starts after 28 check-ins),
 the quality gate with retry (`Capture`/`Reject`), and speech rate and pauses from
 Vosk word timestamps (falls back to energy VAD). They still need tuning on real data.
+
+## Cycle-level jitter and shimmer
+
+`Perturbation.measure` replaces the old frame-to-frame values.
+- YIN frames (70-400 Hz) give the voiced runs and the expected period; an octave jump ends a run.
+- Marks: start on the largest peak (stronger polarity), then find each next cycle by normalized
+  cross-correlation with the current one at lags of 0.83-1.2 x the expected period, with a
+  parabolic fit for sub-sample periods. Correlation below 0.7 breaks the chain.
+- Runs need 5 periods; the first and last period are dropped. Praat limits: period
+  1/400-1/70 s, period factor 1.3, amplitude factor 1.6. Amplitude = parabolic peak per cycle.
+- Fewer than 130 valid pairs: `jitter`/`shimmer` are null. The take is kept, and the
+  baseline and z-scores skip missing values.
+- Versioning: `VoiceFeatures.version` (old data reads as 1), `FeatureExtractor.VERSION = 2`.
+  A calibration with an older version sends the user to recalibrate. Only check-ins with the
+  current version join the baseline and personal weights.
+- `minSpread`: jitter `0.2 x value + 0.05`, shimmer `0.2 x value + 0.3`. Tune on real data.
+
+Compared with Praat (via parselmouth 0.4.7) on 7 synthetic source-filter voices
+(100-300 Hz, glides, 20-25 dB SNR noise): jitter within 1 %, shimmer within 1-4 % when clean
+and 5-10 % higher with noise.
 
 ## Known issues
 

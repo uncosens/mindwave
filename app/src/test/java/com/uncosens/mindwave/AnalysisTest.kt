@@ -23,6 +23,33 @@ class AnalysisTest {
     private fun tone(hz: Float, seconds: Float, amp: Float = 0.3f) =
         FloatArray((Dsp.RATE * seconds).toInt()) { amp * sin(2 * PI * hz * it / Dsp.RATE).toFloat() }
 
+    // Source-filter voice: each cycle kicks a decaying 700 Hz resonance, with Gaussian period and
+    // amplitude perturbation. Returns the signal and the true local jitter and shimmer (%).
+    private fun voice(hz: Float, seconds: Float, jitterSd: Double, shimmerSd: Double, seed: Long): Triple<FloatArray, Float, Float> {
+        val rnd = java.util.Random(seed)
+        val out = FloatArray((Dsp.RATE * seconds).toInt())
+        val starts = mutableListOf<Double>(); val amps = mutableListOf<Double>()
+        var t = 0.0
+        while (t < out.size) {
+            starts += t; amps += 0.3 * (1 + shimmerSd * rnd.nextGaussian())
+            t += Dsp.RATE / hz * (1 + jitterSd * rnd.nextGaussian())
+        }
+        var k = 0
+        for (i in out.indices) {
+            while (k + 1 < starts.size && starts[k + 1] <= i) k++
+            var v = 0.0
+            for (c in maxOf(k - 3, 0)..k) {
+                val tau = (i - starts[c]) / Dsp.RATE
+                v += amps[c] * kotlin.math.exp(-tau / 0.0015) * sin(2 * PI * 700 * tau)
+            }
+            out[i] = v.toFloat()
+        }
+        val p = starts.zipWithNext { x, y -> y - x }; val am = amps.dropLast(1)
+        val jit = 100 * p.zipWithNext { x, y -> kotlin.math.abs(x - y) }.average() / p.average()
+        val shim = 100 * am.zipWithNext { x, y -> kotlin.math.abs(x - y) }.average() / am.average()
+        return Triple(out, jit.toFloat(), shim.toFloat())
+    }
+
     private fun pcm(x: FloatArray) = ShortArray(x.size) { (x[it] * 32767).toInt().toShort() }
 
     @Test fun yinFindsPitch() {
@@ -73,6 +100,34 @@ class AnalysisTest {
         val f = (FeatureExtractor.extract(pcm(x), 4, 1f, words) as Capture.Ok).features
         assertEquals(4f, f.rate, 0.01f)
         assertEquals(0.5f / 1.5f, f.pauseRatio, 0.01f)
+    }
+
+    @Test fun cycleJitterAndShimmerMatchTheSignal() {
+        for ((hz, seed) in listOf(120f to 3L, 210f to 4L)) {
+            val (x, jit, shim) = voice(hz, 3f, 0.005, 0.04, seed)
+            val f = (FeatureExtractor.extract(pcm(FloatArray(4000) + x + FloatArray(4000)), 10, 1f) as Capture.Ok).features
+            assertEquals("jitter at $hz Hz", jit, f.jitter!!, jit * 0.15f)
+            assertEquals("shimmer at $hz Hz", shim, f.shimmer!!, shim * 0.15f)
+        }
+        // A steady tone has almost no perturbation.
+        val f = (FeatureExtractor.extract(pcm(FloatArray(4000) + tone(150f, 2f) + FloatArray(4000)), 10, 1f) as Capture.Ok).features
+        assertTrue("jitter ${f.jitter}", f.jitter!! < 0.05f)
+        assertTrue("shimmer ${f.shimmer}", f.shimmer!! < 0.2f)
+        assertEquals(FeatureExtractor.VERSION, f.version)
+    }
+
+    @Test fun tooFewCyclesDropsTheValueNotTheTake() {
+        // 0.7 s at 150 Hz is about 100 cycles, under the minimum.
+        val x = FloatArray(4000) + tone(150f, 0.7f) + FloatArray(4000)
+        val f = (FeatureExtractor.extract(pcm(x), 2, 1f) as Capture.Ok).features
+        assertEquals(null, f.jitter)
+        assertEquals(null, f.shimmer)
+        val base = VoiceFeatures(150f, 2f, -25f, 4f, 0.15f, 0.95f, 0.5f, 4f)
+        val baseline = Baseline(listOf(base, base.copy(jitter = 0.6f), base.copy(jitter = null)))
+        assertEquals(null, baseline.z(Metric.JITTER, f))
+        assertEquals(null, Baseline(listOf(base.copy(jitter = null))).z(Metric.JITTER, base))
+        val r = Analyzer.assess(f, f, baseline, Baseline(emptyList()), Sentiment.score(""))
+        assertEquals(0f, r.z.getValue(Metric.JITTER), 0f)
     }
 
     @Test fun personalWeightsLearnFromMood() {

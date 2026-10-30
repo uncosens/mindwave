@@ -73,8 +73,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private var daily: VoiceFeatures? = null
     private var transcript = ""
 
-    // Calibration only counts if it was done with the current anchor text.
-    private val calibrated get() = data.calibration.isNotEmpty() && data.calibrationAnchor == Sentences.ANCHOR
+    // Calibration only counts if it was done with the current anchor text and feature version.
+    private val calibrated get() = data.calibration.isNotEmpty() && data.calibrationAnchor == Sentences.ANCHOR &&
+        data.calibration.all { it.version == FeatureExtractor.VERSION }
+
+    // Earlier days that can join the baseline and the personal weights.
+    private fun comparable(c: CheckIn, today: String) =
+        c.date != today && c.anchorText == Sentences.ANCHOR && c.anchor.version == FeatureExtractor.VERSION
 
     // The user's own pitch centers the orb's color response.
     val basePitchHz: Float
@@ -89,7 +94,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 screen = when {
                     calibrated -> Screen.Home
                     loaded.calibration.isEmpty() -> Screen.Welcome
-                    else -> Screen.CalibrationIntro // anchor text changed
+                    else -> Screen.CalibrationIntro // anchor text or feature version changed
                 }
             } catch (e: Exception) {
                 screen = Screen.Error("Speech model not found. Run scripts/fetch-model.ps1 and rebuild.\n\n${e.message}")
@@ -199,14 +204,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             delay(1200) // Let the analyzing orb show instead of flashing.
             val today = LocalDate.now().toString()
-            val recent = data.checkIns.filter { it.date != today && it.anchorText == Sentences.ANCHOR }.takeLast(Analyzer.WINDOW_DAYS)
+            val recent = data.checkIns.filter { comparable(it, today) }.takeLast(Analyzer.WINDOW_DAYS)
             val anchorBase = Baseline((data.calibration + recent.map { it.anchor }).takeLast(Analyzer.WINDOW_DAYS))
             val dailyBase = Baseline(recent.map { it.daily })
             // A read passage says nothing about mood, so only free talk is scored.
             val read = passage != null
             val text = if (read) Sentiment.Result(0f, 0) else Sentiment.score(transcript)
             // Weights come only from earlier days, so today's rating never scores today.
-            val weights = PersonalWeights.fit(data.checkIns.filter { it.date != today && it.anchorText == Sentences.ANCHOR })
+            val weights = PersonalWeights.fit(data.checkIns.filter { comparable(it, today) })
             val r = Analyzer.assess(a, d, anchorBase, dailyBase, text, weights)
             val checkIn = CheckIn(
                 date = today, anchor = a, daily = d, transcript = transcript, textSentiment = text.score, mood = mood,

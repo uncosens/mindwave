@@ -2,7 +2,6 @@ package com.uncosens.mindwave.analysis
 
 import com.uncosens.mindwave.audio.Dsp
 import kotlinx.serialization.Serializable
-import kotlin.math.abs
 import kotlin.math.sqrt
 
 @Serializable
@@ -13,9 +12,11 @@ data class VoiceFeatures(
     val rate: Float,        // syllables per second of speaking time
     val pauseRatio: Float,  // pause time / speech span
     val accuracy: Float,    // 1 - word error rate
-    // Frame-level tremor proxies, not clinical cycle-level jitter/shimmer.
-    val jitter: Float,      // % pitch period change between frames
-    val shimmer: Float,     // % amplitude change between frames
+    // Cycle-level, as in Praat (local). Null when too few clean cycles were found.
+    val jitter: Float?,     // % period change between neighbouring cycles
+    val shimmer: Float?,    // % peak amplitude change between neighbouring cycles
+    // 1: frame-level jitter/shimmer from before FeatureExtractor.VERSION 2. Not comparable.
+    val version: Int = 1,
 )
 
 // One recognized word with times in seconds.
@@ -29,6 +30,7 @@ sealed interface Capture {
 }
 
 object FeatureExtractor {
+    const val VERSION = 2 // bump when a feature changes scale; old baselines then need recalibration
     const val MIN_SNR_DB = 15f
     const val MIN_SPEECH_DB = -45f
     const val VOICED_SEC_PER_SYLLABLE = 0.09f // 74-syllable anchor needs about 6.7 s of voicing
@@ -75,19 +77,7 @@ object FeatureExtractor {
         val stMean = st.average().toFloat()
         val pitchVar = sqrt(st.sumOf { ((it - stMean) * (it - stMean)).toDouble() } / st.size).toFloat()
 
-        // Compare neighbouring voiced frames; skip octave errors and big glides.
-        val periodDiffs = mutableListOf<Float>()
-        val ampDiffs = mutableListOf<Float>()
-        for (k in 1 until voiced.size) {
-            val a = voiced[k - 1]; val b = voiced[k]
-            if (b != a + 1) continue
-            val ratio = pitch[a] / pitch[b]
-            if (ratio !in 0.8f..1.25f) continue
-            periodDiffs += abs(1f / pitch[a] - 1f / pitch[b])
-            ampDiffs += abs(rms[a] - rms[b])
-        }
-        val meanPeriod = voiced.map { 1f / pitch[it] }.average().toFloat()
-        val meanAmp = voiced.map { rms[it] }.average().toFloat()
+        val cycles = Perturbation.measure(x, pitch, active, HOP, WIN)
 
         val timed = words.size >= 3
         val wordSec = words.sumOf { (it.end - it.start).toDouble() }.toFloat()
@@ -105,8 +95,9 @@ object FeatureExtractor {
             },
             pauseRatio = if (timed && wordSpan > 0f) gaps / wordSpan else pauseFrames / spanFrames.toFloat(),
             accuracy = accuracy,
-            jitter = if (periodDiffs.isEmpty()) 0f else 100f * periodDiffs.average().toFloat() / meanPeriod,
-            shimmer = if (ampDiffs.isEmpty()) 0f else 100f * ampDiffs.average().toFloat() / meanAmp,
+            jitter = cycles.jitter,
+            shimmer = cycles.shimmer,
+            version = VERSION,
         ))
     }
 }

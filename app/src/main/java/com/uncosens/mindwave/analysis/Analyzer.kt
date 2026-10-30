@@ -5,7 +5,7 @@ import kotlin.math.tanh
 
 enum class Metric(
     val label: String,
-    val get: (VoiceFeatures) -> Float,
+    val get: (VoiceFeatures) -> Float?, // null when the take had too little to measure
     val minSpread: (Float) -> Float,
     // Holds up when the sentence changes, so the daily sentence can use the anchor baseline.
     val textRobust: Boolean,
@@ -15,19 +15,26 @@ enum class Metric(
     ENERGY("Tone energy", { it.loudness }, { 1.5f }, true),
     RATE("Speech rate", { it.rate }, { 0.25f }, false),
     PAUSES("Breathing pauses", { it.pauseRatio }, { 0.03f }, false),
-    JITTER("Pitch tremor", { it.jitter }, { it * 0.15f + 0.05f }, true),
-    SHIMMER("Volume tremor", { it.shimmer }, { it * 0.15f + 0.5f }, true),
+    // Typical voices: jitter 0.2-1 %, shimmer 2-6 %.
+    JITTER("Pitch tremor", { it.jitter }, { it * 0.2f + 0.05f }, true),
+    SHIMMER("Volume tremor", { it.shimmer }, { it * 0.2f + 0.3f }, true),
 }
 
 class Baseline(samples: List<VoiceFeatures>) {
     val size = samples.size
-    private val center = Metric.entries.associateWith { m -> median(samples.map(m.get)) }
+    private val values = Metric.entries.associateWith { m -> samples.mapNotNull(m.get) }
+    private val center = values.mapValues { (_, v) -> median(v) }
     private val spread = Metric.entries.associateWith { m ->
         val c = center.getValue(m)
-        maxOf(median(samples.map { abs(m.get(it) - c) }) * 1.4826f, m.minSpread(c))
+        maxOf(median(values.getValue(m).map { abs(it - c) }) * 1.4826f, m.minSpread(c))
     }
 
-    fun z(m: Metric, f: VoiceFeatures): Float = ((m.get(f) - center.getValue(m)) / spread.getValue(m)).coerceIn(-4f, 4f)
+    // Null when today's value or every baseline value is missing.
+    fun z(m: Metric, f: VoiceFeatures): Float? {
+        val v = m.get(f) ?: return null
+        if (values.getValue(m).isEmpty()) return null
+        return ((v - center.getValue(m)) / spread.getValue(m)).coerceIn(-4f, 4f)
+    }
 
     private fun median(v: List<Float>): Float = v.sorted().let { if (it.isEmpty()) 0f else it[it.size / 2] }
 }
@@ -50,7 +57,7 @@ object Analyzer {
             val parts = mutableListOf(anchorBase.z(m, anchor))
             if (m.textRobust) parts += anchorBase.z(m, daily)
             else if (dailyBase.size >= 3) parts += dailyBase.z(m, daily)
-            parts.average().toFloat()
+            parts.filterNotNull().let { if (it.isEmpty()) 0f else it.average().toFloat() }
         }
         fun v(m: Metric) = z.getValue(m)
 
