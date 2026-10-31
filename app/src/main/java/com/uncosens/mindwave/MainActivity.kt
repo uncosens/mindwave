@@ -33,6 +33,7 @@ import com.uncosens.mindwave.ui.CalibrationIntroScreen
 import com.uncosens.mindwave.ui.HistoryScreen
 import com.uncosens.mindwave.ui.HomeScreen
 import com.uncosens.mindwave.ui.LanguageScreen
+import com.uncosens.mindwave.ui.LoadingScreen
 import com.uncosens.mindwave.ui.LocalStrings
 import com.uncosens.mindwave.ui.MessageScreen
 import com.uncosens.mindwave.ui.MicDeniedScreen
@@ -113,7 +114,7 @@ class MainActivity : ComponentActivity() {
                     label = "screen",
                 ) { shown ->
                     when (shown) {
-                        Screen.Loading -> MessageScreen(vm.strings.preparing)
+                        Screen.Loading -> LoadingScreen(vm.strings.preparing)
                         Screen.Language -> LanguageScreen(vm)
                         is Screen.Error -> MessageScreen(shown.text)
                         Screen.Welcome -> WelcomeScreen(vm, hasMic())
