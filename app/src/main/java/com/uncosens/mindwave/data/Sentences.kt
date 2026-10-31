@@ -11,13 +11,14 @@ object Sentences {
         "Beyond it, a farmer keeps bees, a few goats, and a garden of beans and peas. " +
         "We walked back by the water and reached home before evening."
 
-    // Same plan in Korean: about 109 syllables, mostly voiced, five short neutral sentences
-    // in everyday spoken style, with no numbers or loanwords that the recognizer may spell differently.
-    const val ANCHOR_KO = "오늘 아침에는 일찍 일어나서 동네를 한 바퀴 걸었어요. " +
-        "골목마다 나무가 많고, 길가에는 작은 꽃이 피어 있었어요. " +
-        "놀이터 옆 의자에 앉아 쉬다가, 천천히 걸어서 시장 쪽으로 갔어요. " +
-        "가게 앞에는 과일과 채소가 가지런히 놓여 있었어요. " +
-        "저는 사과 몇 개를 사서 집으로 돌아왔어요."
+    // Korean: 113 syllables, about 19-21 s. The first three sentences are adapted into modern wording
+    // from Lee Hyo-seok's essay "Burning Fallen Leaves" (1938, public domain); the last two are new.
+    // Chosen for recognition accuracy and a calm, everyday tone.
+    const val ANCHOR_KO = "가을이 깊어지면 나는 거의 매일 마당의 낙엽을 긁어모아야 한다. " +
+        "날마다 하는 일인데도 낙엽은 다음 날이면 또 수북하게 쌓여 있다. " +
+        "낙엽은 정말 이 세상 사람의 수보다도 많은가 보다. " +
+        "오늘도 나는 빗자루를 들고 마당을 천천히 한 바퀴 돌았다. " +
+        "일을 다 마치고 나면 따뜻한 물을 한 잔 마신다."
 
     fun anchor(lang: Lang) = if (lang == Lang.KO) ANCHOR_KO else ANCHOR_EN
 

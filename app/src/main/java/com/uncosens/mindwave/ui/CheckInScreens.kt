@@ -108,7 +108,10 @@ private fun VoiceStep(
             // Reading steps finish by themselves once the whole text has been heard and the voice stops.
             val doneReading = target.isNotEmpty() &&
                 ((read >= target.size && silent > 0.5f) || (read >= target.size - 1 && silent > 1.2f))
-            if (elapsed >= maxSeconds || doneReading) vm.stopRecording()
+            if (elapsed >= maxSeconds || doneReading) {
+                android.util.Log.i("mindwave", "auto stop at $elapsed s: read $read of ${target.size}, silent $silent s")
+                vm.stopRecording()
+            }
         }
     }
     val canFinish = elapsed >= minSeconds

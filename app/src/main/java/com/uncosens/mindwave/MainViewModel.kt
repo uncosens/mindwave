@@ -2,6 +2,7 @@ package com.uncosens.mindwave
 
 import android.app.Application
 import android.os.Build
+import android.util.Log
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -216,6 +217,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 else { stream?.cancel(); transcriber!!.transcribe(pcm) }
             }
             val heard = result.text
+            // One line per take, for tuning the gates on a real phone (adb logcat -s mindwave).
+            Log.i("mindwave", "take $step ${pcm.size / Dsp.RATE.toFloat()} s, peak ${pcm.maxOfOrNull { kotlin.math.abs(it.toInt()) } ?: 0}, heard: $heard")
             if (talk) liveText = heard
             when (step) {
                 is Screen.Calibrate -> measure(pcm, anchorText, result)?.let { f ->
@@ -232,7 +235,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 Screen.ReadAnchor -> measure(pcm, anchorText, result)?.let { anchor = it; go(Screen.ReadDaily) }
                 Screen.ReadDaily -> measure(pcm, dailySentence, result)?.let { daily = it; go(Screen.FreeTalk) }
                 Screen.FreeTalk -> if (passage != null) {
-                    if (TextTools.accuracy(passage!!, heard) < 0.3f) {
+                    if (TextTools.accuracy(passage!!, heard) < 0.3f && !TextTools.reachedEnd(passage!!, heard)) {
                         problem = Problem(strings.shortTitle, strings.readWholePassage)
                     } else {
                         transcript = heard
@@ -296,8 +299,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
         val c = withContext(Dispatchers.Default) {
             val perSyllable = if (lang == Lang.KO) FeatureExtractor.VOICED_SEC_PER_SYLLABLE_KO else FeatureExtractor.VOICED_SEC_PER_SYLLABLE
-            FeatureExtractor.extract(pcm, TextTools.syllables(sentence), accuracy, heard.words, perSyllable)
+            val reached = TextTools.reachedEnd(sentence, heard.text)
+            FeatureExtractor.extract(pcm, TextTools.syllables(sentence), accuracy, heard.words, perSyllable, reached)
         }
+        Log.i("mindwave", "measure accuracy=$accuracy words=${heard.words.size} -> ${if (c is Capture.Bad) "${c.reason} ${c.detail}" else "ok"}")
         return when (c) {
             is Capture.Ok -> c.features
             is Capture.Bad -> {

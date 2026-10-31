@@ -87,7 +87,7 @@ class AnalysisTest {
     }
 
     @Test fun koreanText() {
-        assertEquals(109, TextTools.syllables(Sentences.ANCHOR_KO))
+        assertEquals(113, TextTools.syllables(Sentences.ANCHOR_KO))
         // Compared by syllable, so different word spacing does not count as an error.
         assertEquals(1f, TextTools.accuracy("작은 다리가 있습니다.", "작은다리가 있습니다"), 0f)
         assertEquals(11f / 12f, TextTools.accuracy("우리는 아침 일찍 걸었습니다", "우리는 아침 일직 걸었습니다"), 1e-4f)
@@ -95,6 +95,15 @@ class AnalysisTest {
         assertEquals(2, TextTools.readProgress(target, "우리는 아침"))
         assertEquals(2, TextTools.readProgress(target, "우리는아침 일"))
         assertEquals(8, TextTools.readProgress(target, "우리는 아침 일찍 마을 앞 냇가를 따라 걸었습니다"))
+    }
+
+    @Test fun reachedEndIgnoresMidErrors() {
+        val text = "우리는 아침 일찍 마을 앞 냇가를 따라 걸었습니다"
+        // Several misheard syllables, but the end was read: a full read.
+        assertTrue(TextTools.reachedEnd(text, "우리 아침 일직 마울 앞 냇가 따라 걸었습니다"))
+        // Stopped halfway: not a full read, however clean.
+        assertTrue(!TextTools.reachedEnd(text, "우리는 아침 일찍 마을"))
+        assertTrue(TextTools.reachedEnd("the cat sat on the mat", "the hat sat on the mat"))
     }
 
     @Test fun koreanSentiment() {

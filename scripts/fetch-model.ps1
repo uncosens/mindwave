@@ -1,6 +1,7 @@
 # Downloads what is not kept in git:
 # - English: small Vosk model (about 40 MB) into app assets.
-# - Korean: sherpa-onnx streaming zipformer, int8 files only (about 130 MB), into app assets.
+# - Korean: streaming zipformer for sherpa-onnx (kangkyu/icefall-asr-ko-streaming-zipformer-174m,
+#   chunk 32, int8, about 160 MB), into app assets.
 # - The sherpa-onnx Android library (about 50 MB) into app/libs.
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
@@ -21,18 +22,12 @@ if (-not (Test-Path $en)) {
 
 $ko = Join-Path $assets "model-ko-sherpa"
 if (-not (Test-Path $ko)) {
-    $name = "sherpa-onnx-streaming-zipformer-korean-2024-06-16"
-    $tmp = Join-Path $env:TEMP "$name.tar.bz2"
-    Invoke-WebRequest "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/$name.tar.bz2" -OutFile $tmp
-    tar -xjf $tmp -C $env:TEMP
-    $src = Join-Path $env:TEMP $name
+    $base = "https://huggingface.co/kangkyu/icefall-asr-ko-streaming-zipformer-174m/resolve/main"
     New-Item -ItemType Directory -Force $ko | Out-Null
     foreach ($part in "encoder", "decoder", "joiner") {
-        Copy-Item (Join-Path $src "$part-epoch-99-avg-1.int8.onnx") (Join-Path $ko "$part.int8.onnx")
+        Invoke-WebRequest "$base/$part-epoch-99-avg-1-chunk-32-left-128.int8.onnx" -OutFile (Join-Path $ko "$part.int8.onnx")
     }
-    Copy-Item (Join-Path $src "tokens.txt") $ko
-    Remove-Item $src -Recurse -Force
-    Remove-Item $tmp
+    Invoke-WebRequest "$base/tokens.txt" -OutFile (Join-Path $ko "tokens.txt")
     Write-Host "Model ready at $ko"
 }
 

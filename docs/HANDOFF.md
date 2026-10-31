@@ -100,7 +100,8 @@ the orb's reaction to a real voice have never been seen working.
 
 - `AppData.language` (`Lang.EN` / `Lang.KO`) is null until picked. Older data with no language
   reads as English. Each language has its own model folder (`Lang.modelDir`), anchor
-  (`Sentences.ANCHOR_EN` 74 syllables, `ANCHOR_KO` 109 syllables, both about 17-19 s), daily
+  (`Sentences.ANCHOR_EN` 74 syllables, `ANCHOR_KO` 113 syllables adapted from Lee Hyo-seok's
+  public-domain essay "Burning Fallen Leaves", about 17-21 s), daily
   sentences, free-talk prompts and passages.
 - Baselines never mix languages: calibration and check-ins are matched by anchor text.
 - `TextTools` works on both: one Hangul block is one syllable; Korean accuracy and read progress
@@ -195,13 +196,17 @@ and 5-10 % higher with noise.
 - Passage mode on small phones: the passage and orb share one screen and may feel
   cramped (the transcript is gone from passage mode, which helps).
 - Sentiment is a small word list. A small on-device text model would be better.
-- Korean uses sherpa-onnx (`sherpa-onnx-streaming-zipformer-korean-2024-06-16`, int8), read straight
-  from assets. It replaced the small Vosk Korean model: on the same clips, character error rate was
-  about 13 % vs 45 % on real recordings and 17 % vs 30 % on TTS. The model's text has no spaces, so
+- Korean uses sherpa-onnx with `kangkyu/icefall-asr-ko-streaming-zipformer-174m` (chunk 32, int8, Apache 2.0,
+  trained on about 6,500 h of KsponSpeech and AI Hub data), read straight from assets. The first sherpa
+  model tried (`sherpa-onnx-streaming-zipformer-korean-2024-06-16`) returned empty text for a real male
+  voice on the Galaxy Tab S7; this one read the same take at 97 % accuracy (8.7 % CER on the sample
+  clips). Both beat the small Vosk Korean model (about 45 % CER on real recordings). The model's text has no spaces, so
   `SherpaTranscriber` rebuilds words from tokens; word end times are estimated (start of the last
   token + 0.25 s), so Korean rate and pause values are approximate but consistent day to day.
-- The model appears to be trained on KsponSpeech (AI Hub). Check its license terms before a
-  commercial release.
+- The model card says Apache 2.0, but the training data includes KsponSpeech and AI Hub sets.
+  Check their terms before a commercial release.
+- `SherpaTranscriber` raises quiet takes to about -20 dBFS before decoding (max 100x); the model
+  returns nothing below about -50 dBFS.
 - The debug APK is about 280 MB (int8 ONNX barely compresses; x86_64 libraries are included for the
   emulator). Dropping x86_64 from `abiFilters` for release saves about 35 MB.
 - The store is one JSON file with default values for new fields; there is no

@@ -26,7 +26,9 @@ enum class Reject { TOO_QUIET, NOISY, TOO_SHORT, CLIPPED }
 
 sealed interface Capture {
     data class Ok(val features: VoiceFeatures) : Capture
-    data class Bad(val reason: Reject) : Capture
+    data class Bad(val reason: Reject) : Capture {
+        var detail = "" // for logs only; not part of equality
+    }
 }
 
 object FeatureExtractor {
@@ -48,10 +50,11 @@ object FeatureExtractor {
     fun extract(
         pcm: ShortArray, syllables: Int, accuracy: Float, words: List<Word> = emptyList(),
         secPerSyllable: Float = VOICED_SEC_PER_SYLLABLE,
+        reachedEnd: Boolean = false, // the transcript got to the end of the text
     ): Capture {
         val x = Dsp.toFloat(pcm)
         val frames = (x.size - WIN) / HOP
-        if (frames < 25) return Capture.Bad(Reject.TOO_SHORT)
+        if (frames < 25) return Capture.Bad(Reject.TOO_SHORT).apply { detail = "take ${pcm.size} samples" }
         val rms = FloatArray(frames) { Dsp.rms(x, it * HOP, WIN) }
         val pitch = FloatArray(frames) { Dsp.yin(x, it * HOP, WIN) }
 
@@ -84,8 +87,8 @@ object FeatureExtractor {
         // Pitch tracking misses some voiced frames on real phones, so when the words show the whole
         // text was read, only a small floor of voicing is needed for the pitch statistics.
         val voicedSec = voiced.size * HOP / Dsp.RATE.toFloat()
-        val needed = if (accuracy >= FULL_READ) MIN_VOICED_SEC else maxOf(syllables * secPerSyllable, MIN_VOICED_SEC)
-        if (voicedSec < needed) return Capture.Bad(Reject.TOO_SHORT)
+        val needed = if (accuracy >= FULL_READ || reachedEnd) MIN_VOICED_SEC else maxOf(syllables * secPerSyllable, MIN_VOICED_SEC)
+        if (voicedSec < needed) return Capture.Bad(Reject.TOO_SHORT).apply { detail = "voiced $voicedSec s of $needed s" }
         val loudness = (first..last).filter { active[it] }.map { Dsp.db(rms[it]) }.average().toFloat()
         if (loudness < MIN_SPEECH_DB) return Capture.Bad(Reject.TOO_QUIET)
         if (loudness - Dsp.db(floor) < MIN_SNR_DB) return Capture.Bad(Reject.NOISY)
@@ -162,6 +165,13 @@ object TextTools {
         }
         // On a tie keep the shorter prefix, so a misheard last word does not count as read.
         return col.indices.minBy { col[it] }
+    }
+
+    // True when the transcript reaches the last words of the text, even with errors along the way.
+    // Recognition mistakes lower accuracy, but only an early stop leaves the end unread.
+    fun reachedEnd(text: String, heard: String): Boolean {
+        val target = words(text)
+        return target.isNotEmpty() && readProgress(target, heard) >= target.size * 0.85f
     }
 
     // 1 - error rate (words, or syllables for Korean), clamped to 0..1.
