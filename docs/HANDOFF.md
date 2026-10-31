@@ -50,7 +50,7 @@ compared, and Home suggests recalibrating when they differ from the calibration.
 | `app/.../Strings.kt` | All UI text, `Strings.En` and `Strings.Ko`; screens read it from `LocalStrings` |
 | `app/.../MainActivity.kt` | Screen routing, mic permission |
 | `audio/Recorder.kt`, `audio/Dsp.kt` | 16 kHz capture (UNPROCESSED source if supported), RMS, YIN pitch |
-| `speech/Transcriber.kt` | Vosk offline STT, word timestamps, live streaming for free talk |
+| `speech/Transcriber.kt` | Offline STT interface and live streaming; `VoskTranscriber` (English), `SherpaTranscriber` (Korean) |
 | `analysis/VoiceFeatures.kt` | Feature extraction, the quality gate and `FeatureExtractor.VERSION` |
 | `analysis/Perturbation.kt` | Cycle-level jitter and shimmer (Praat-style cross-correlation marks) |
 | `analysis/Analyzer.kt` | Metrics, robust baseline (median/MAD, 14 days), arousal/valence/stability |
@@ -90,7 +90,8 @@ the orb's reaction to a real voice have never been seen working.
 
 1. JDK 21+ (on the original machine: `C:\Users\junan\AndroidDev\jdk`) and the Android
    SDK with platform 37. Put `sdk.dir=...` in `local.properties`.
-2. Fetch the speech models (English about 40 MB, Korean about 82 MB zipped; not in git):
+2. Fetch the speech models and the sherpa-onnx library (Vosk English about 40 MB, sherpa Korean int8
+   about 130 MB, `app/libs/sherpa-onnx-2.0.1.aar` about 50 MB; none in git):
    `powershell -File scripts/fetch-model.ps1`
 3. `gradlew testDebugUnitTest assembleDebug`
 4. `gradlew installDebug` with a device connected.
@@ -98,8 +99,8 @@ the orb's reaction to a real voice have never been seen working.
 ## Languages (English and Korean)
 
 - `AppData.language` (`Lang.EN` / `Lang.KO`) is null until picked. Older data with no language
-  reads as English. Each language has its own Vosk model folder (`Lang.modelDir`), anchor
-  (`Sentences.ANCHOR_EN` 74 syllables, `ANCHOR_KO` 106 syllables, both about 17-19 s), daily
+  reads as English. Each language has its own model folder (`Lang.modelDir`), anchor
+  (`Sentences.ANCHOR_EN` 74 syllables, `ANCHOR_KO` 109 syllables, both about 17-19 s), daily
   sentences, free-talk prompts and passages.
 - Baselines never mix languages: calibration and check-ins are matched by anchor text.
 - `TextTools` works on both: one Hangul block is one syllable; Korean accuracy and read progress
@@ -109,8 +110,8 @@ the orb's reaction to a real voice have never been seen working.
 
 ## Open tasks, in priority order
 
-0. **Try Korean on a phone.** Built and unit-tested only. Check the language picker, Korean model
-   load time, read progress and the auto-stop with real Vosk Korean output, and whether the
+0. **Try Korean on a phone.** The sherpa model loads on the Galaxy Tab S7, but nothing has been
+   recognized there yet. Check read progress and the auto-stop with real sherpa output, and whether the
    quality gate needs a Korean value for `VOICED_SEC_PER_SYLLABLE` (Korean syllables are shorter).
 
 1. **End-to-end test on a phone.** Do calibration and a few check-ins. Tune:
@@ -194,8 +195,14 @@ and 5-10 % higher with noise.
 - Passage mode on small phones: the passage and orb share one screen and may feel
   cramped (the transcript is gone from passage mode, which helps).
 - Sentiment is a small word list. A small on-device text model would be better.
-- The Korean Vosk model unpacks to about 250 MB (mostly `graph/HCLr.fst`) and is copied to app
-  storage on first use. The debug APK is about 205 MB with both models. Check load time and memory
-  on low-end phones; a per-language download would break the fully offline install.
+- Korean uses sherpa-onnx (`sherpa-onnx-streaming-zipformer-korean-2024-06-16`, int8), read straight
+  from assets. It replaced the small Vosk Korean model: on the same clips, character error rate was
+  about 13 % vs 45 % on real recordings and 17 % vs 30 % on TTS. The model's text has no spaces, so
+  `SherpaTranscriber` rebuilds words from tokens; word end times are estimated (start of the last
+  token + 0.25 s), so Korean rate and pause values are approximate but consistent day to day.
+- The model appears to be trained on KsponSpeech (AI Hub). Check its license terms before a
+  commercial release.
+- The debug APK is about 280 MB (int8 ONNX barely compresses; x86_64 libraries are included for the
+  emulator). Dropping x86_64 from `abiFilters` for release saves about 35 MB.
 - The store is one JSON file with default values for new fields; there is no
   other migration.

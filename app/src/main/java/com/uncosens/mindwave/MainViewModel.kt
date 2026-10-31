@@ -173,7 +173,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         problem = null
         // Live text drives the free-talk transcript and the read-progress highlight.
         liveText = ""
-        val l = transcriber!!.Live { text -> viewModelScope.launch { liveText = text } }
+        val l = transcriber!!.live { text -> viewModelScope.launch { liveText = text } }
         live = l
         recorder.listener = l::feed
         recorder.start()
@@ -295,7 +295,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             return null
         }
         val c = withContext(Dispatchers.Default) {
-            FeatureExtractor.extract(pcm, TextTools.syllables(sentence), accuracy, heard.words)
+            val perSyllable = if (lang == Lang.KO) FeatureExtractor.VOICED_SEC_PER_SYLLABLE_KO else FeatureExtractor.VOICED_SEC_PER_SYLLABLE
+            FeatureExtractor.extract(pcm, TextTools.syllables(sentence), accuracy, heard.words, perSyllable)
         }
         return when (c) {
             is Capture.Ok -> c.features

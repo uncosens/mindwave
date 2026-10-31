@@ -69,6 +69,12 @@ Copy below is final English copy. `{}` = variable.
 
 ### 4.1 Onboarding
 
+**Language** (first launch, before Welcome)
+- Top 96 dp: idle orb 160 dp. 32 dp below: `headlineMedium` "언어를 선택하세요", then `bodyLarge`
+  `onSurfaceVariant` "Choose your language".
+- Bottom: two equal pill buttons side by side in one row, 12 dp gap, each `weight(1f)`, 56 dp tall:
+  [한국어] [English]. Both use the same filled `primary` style, so neither looks like the default.
+
 **Welcome**
 - Top 96 dp: idle orb 160 dp, centered.
 - 32 dp below: `headlineLarge` "Hear how you feel."

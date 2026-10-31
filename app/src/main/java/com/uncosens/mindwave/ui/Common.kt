@@ -62,8 +62,8 @@ fun Page(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> U
 }
 
 @Composable
-fun PrimaryButton(text: String, onClick: () -> Unit, enabled: Boolean = true) =
-    Button(onClick, Modifier.fillMaxWidth().height(Dimens.buttonHeight), enabled = enabled, shape = CircleShape) {
+fun PrimaryButton(text: String, onClick: () -> Unit, enabled: Boolean = true, modifier: Modifier = Modifier.fillMaxWidth()) =
+    Button(onClick, modifier.height(Dimens.buttonHeight), enabled = enabled, shape = CircleShape) {
         Text(text, style = MaterialTheme.typography.labelLarge)
     }
 

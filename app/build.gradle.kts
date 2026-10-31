@@ -29,7 +29,8 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
     // Offline speech recognition.
     implementation("net.java.dev.jna:jna:5.19.1@aar")
-    implementation("com.alphacephei:vosk-android:0.3.75@aar")
+    implementation("com.alphacephei:vosk-android:0.3.75@aar") // English
+    implementation(files("libs/sherpa-onnx-2.0.1.aar")) // Korean; fetched by scripts/fetch-model.ps1
 
     testImplementation("junit:junit:4.13.2")
 }

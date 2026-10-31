@@ -63,9 +63,10 @@ fun LanguageScreen(vm: MainViewModel) = Page {
     Text("Choose your language", style = MaterialTheme.typography.bodyLarge,
         color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
     Spacer(Modifier.weight(1f))
-    PrimaryButton("한국어", { vm.chooseLanguage(Lang.KO) })
-    Spacer(Modifier.height(Dimens.s))
-    SecondaryButton("English") { vm.chooseLanguage(Lang.EN) }
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        PrimaryButton("한국어", { vm.chooseLanguage(Lang.KO) }, modifier = Modifier.weight(1f))
+        PrimaryButton("English", { vm.chooseLanguage(Lang.EN) }, modifier = Modifier.weight(1f))
+    }
     Spacer(Modifier.height(Dimens.l))
 }
 

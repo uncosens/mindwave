@@ -3,110 +3,59 @@ package com.uncosens.mindwave.speech
 import android.content.Context
 import com.uncosens.mindwave.analysis.Word
 import com.uncosens.mindwave.data.Lang
-import org.json.JSONObject
-import org.vosk.Model
-import org.vosk.Recognizer
-import java.io.File
 import java.util.concurrent.LinkedBlockingQueue
 import kotlin.concurrent.thread
 
-// Offline speech-to-text with the bundled Vosk model for the app language.
-class Transcriber(private val model: Model) {
+// Offline speech-to-text for the app language: Vosk for English, sherpa-onnx for Korean.
+interface Transcriber {
     data class Result(val text: String, val words: List<Word>)
 
-    fun close() = model.close()
-
-    fun transcribe(pcm: ShortArray): Result {
-        val rec = Recognizer(model, 16000f)
-        try {
-            rec.setWords(true)
-            // Feed in small chunks: Vosk splits long audio at pauses and returns each part once.
-            val parts = mutableListOf<JSONObject>()
-            var i = 0
-            while (i < pcm.size) {
-                val n = minOf(3200, pcm.size - i)
-                if (rec.acceptWaveForm(pcm.copyOfRange(i, i + n), n)) parts += JSONObject(rec.result)
-                i += n
-            }
-            parts += JSONObject(rec.finalResult)
-            val words = parts.flatMap { p ->
-                val arr = p.optJSONArray("result") ?: return@flatMap emptyList()
-                (0 until arr.length()).map { k ->
-                    arr.getJSONObject(k).let { Word(it.getString("word"), it.getDouble("start").toFloat(), it.getDouble("end").toFloat()) }
-                }
-            }
-            return Result(parts.map { it.optString("text") }.filter { it.isNotBlank() }.joinToString(" "), words)
-        } finally {
-            rec.close()
-        }
-    }
-
     // Streams audio while recording and reports the text so far through onText.
-    inner class Live(private val onText: (String) -> Unit) {
-        private val queue = LinkedBlockingQueue<ShortArray>()
-        private val rec = Recognizer(model, 16000f)
-        private val done = StringBuilder()
-        private val worker = thread(name = "live-stt") {
-            while (true) {
-                val chunk = queue.take()
-                if (chunk.isEmpty()) break
-                if (rec.acceptWaveForm(chunk, chunk.size)) {
-                    append(JSONObject(rec.result).optString("text"))
-                    onText(done.toString())
-                } else {
-                    val partial = JSONObject(rec.partialResult).optString("partial")
-                    onText(if (partial.isEmpty()) done.toString() else "$done $partial".trim())
-                }
-            }
-        }
-
-        fun feed(chunk: ShortArray) = queue.put(chunk)
-
-        // Ends the stream and returns the full text.
-        fun finish(): String {
-            stopWorker()
-            append(JSONObject(rec.finalResult).optString("text"))
-            rec.close()
-            return done.toString()
-        }
-
-        fun cancel() {
-            stopWorker()
-            rec.close()
-        }
-
-        private fun stopWorker() {
-            queue.put(ShortArray(0))
-            worker.join()
-        }
-
-        private fun append(text: String) {
-            if (text.isNotBlank()) done.append(if (done.isEmpty()) text else " $text")
-        }
+    interface Live {
+        fun feed(chunk: ShortArray)
+        fun finish(): String // ends the stream and returns the full text
+        fun cancel()
     }
+
+    fun transcribe(pcm: ShortArray): Result
+    fun live(onText: (String) -> Unit): Live
+    fun close()
 
     companion object {
-        // Vosk needs a real folder, so copy the model out of assets once.
-        fun load(context: Context, lang: Lang): Transcriber {
-            val dir = File(context.filesDir, lang.modelDir)
-            val done = File(dir, ".copied")
-            if (!done.exists()) {
-                dir.deleteRecursively()
-                copyAssets(context, lang.modelDir, dir)
-                done.createNewFile()
-            }
-            return Transcriber(Model(dir.absolutePath))
-        }
+        fun load(context: Context, lang: Lang): Transcriber =
+            if (lang == Lang.KO) SherpaTranscriber.load(context, lang.modelDir) else VoskTranscriber.load(context, lang.modelDir)
+    }
+}
 
-        private fun copyAssets(context: Context, path: String, target: File) {
-            val children = context.assets.list(path).orEmpty()
-            if (children.isEmpty()) {
-                target.parentFile?.mkdirs()
-                context.assets.open(path).use { input -> target.outputStream().use { input.copyTo(it) } }
-                return
-            }
-            target.mkdirs()
-            for (c in children) copyAssets(context, "$path/$c", File(target, c))
+// Runs recognition on its own thread so the recorder never waits for the decoder.
+abstract class QueuedLive(private val onText: (String) -> Unit) : Transcriber.Live {
+    private val queue = LinkedBlockingQueue<ShortArray>()
+    private val worker = thread(name = "live-stt") {
+        while (true) {
+            val chunk = queue.take()
+            if (chunk.isEmpty()) break
+            onText(accept(chunk))
         }
+    }
+
+    protected abstract fun accept(chunk: ShortArray): String // returns the text so far
+    protected abstract fun end(): String
+    protected abstract fun release()
+
+    override fun feed(chunk: ShortArray) = queue.put(chunk)
+
+    override fun finish(): String {
+        stopWorker()
+        return end().also { release() }
+    }
+
+    override fun cancel() {
+        stopWorker()
+        release()
+    }
+
+    private fun stopWorker() {
+        queue.put(ShortArray(0))
+        worker.join()
     }
 }

@@ -34,6 +34,7 @@ object FeatureExtractor {
     const val MIN_SNR_DB = 15f
     const val MIN_SPEECH_DB = -45f
     const val VOICED_SEC_PER_SYLLABLE = 0.09f // 74-syllable anchor needs about 6.7 s of voicing
+    const val VOICED_SEC_PER_SYLLABLE_KO = 0.05f // Korean syllables are short; 106-syllable anchor needs about 5.3 s
     private const val MIN_VOICED_SEC = 0.5f
     private const val CLIP_LEVEL = 32700 // at or near 16-bit full scale
     private const val MAX_CLIPPED = 0.001f // share of speech samples
@@ -44,7 +45,10 @@ object FeatureExtractor {
 
     // Rejects quiet, noisy or too short takes so they never reach the baseline.
     // With word timings, rate and pauses come from the words; otherwise from energy.
-    fun extract(pcm: ShortArray, syllables: Int, accuracy: Float, words: List<Word> = emptyList()): Capture {
+    fun extract(
+        pcm: ShortArray, syllables: Int, accuracy: Float, words: List<Word> = emptyList(),
+        secPerSyllable: Float = VOICED_SEC_PER_SYLLABLE,
+    ): Capture {
         val x = Dsp.toFloat(pcm)
         val frames = (x.size - WIN) / HOP
         if (frames < 25) return Capture.Bad(Reject.TOO_SHORT)
@@ -80,7 +84,7 @@ object FeatureExtractor {
         // Pitch tracking misses some voiced frames on real phones, so when the words show the whole
         // text was read, only a small floor of voicing is needed for the pitch statistics.
         val voicedSec = voiced.size * HOP / Dsp.RATE.toFloat()
-        val needed = if (accuracy >= FULL_READ) MIN_VOICED_SEC else maxOf(syllables * VOICED_SEC_PER_SYLLABLE, MIN_VOICED_SEC)
+        val needed = if (accuracy >= FULL_READ) MIN_VOICED_SEC else maxOf(syllables * secPerSyllable, MIN_VOICED_SEC)
         if (voicedSec < needed) return Capture.Bad(Reject.TOO_SHORT)
         val loudness = (first..last).filter { active[it] }.map { Dsp.db(rms[it]) }.average().toFloat()
         if (loudness < MIN_SPEECH_DB) return Capture.Bad(Reject.TOO_QUIET)

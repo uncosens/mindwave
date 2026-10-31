@@ -29,7 +29,7 @@ data class CheckIn(
 )
 
 // App language. Each has its own speech model, texts and baseline.
-enum class Lang(val modelDir: String) { EN("model-en-us"), KO("model-ko") }
+enum class Lang(val modelDir: String) { EN("model-en-us"), KO("model-ko-sherpa") }
 
 @Serializable
 data class AppData(

@@ -87,7 +87,7 @@ class AnalysisTest {
     }
 
     @Test fun koreanText() {
-        assertEquals(106, TextTools.syllables(Sentences.ANCHOR_KO))
+        assertEquals(109, TextTools.syllables(Sentences.ANCHOR_KO))
         // Compared by syllable, so different word spacing does not count as an error.
         assertEquals(1f, TextTools.accuracy("작은 다리가 있습니다.", "작은다리가 있습니다"), 0f)
         assertEquals(11f / 12f, TextTools.accuracy("우리는 아침 일찍 걸었습니다", "우리는 아침 일직 걸었습니다"), 1e-4f)
@@ -162,6 +162,14 @@ class AnalysisTest {
         assertEquals(Capture.Bad(Reject.TOO_SHORT), FeatureExtractor.extract(pcm(short), 74, 0.5f))
         // When the words show the whole text was read, the same take is accepted.
         assertTrue(FeatureExtractor.extract(pcm(short), 74, 0.9f) is Capture.Ok)
+    }
+
+    @Test fun koreanSentenceNeedsLessVoicingPerSyllable() {
+        // A 27-syllable Korean sentence read in about 4 s gives roughly 1.5 s of tracked voicing.
+        val take = FloatArray(4000) + tone(150f, 1.5f) + FloatArray(4000)
+        assertEquals(Capture.Bad(Reject.TOO_SHORT), FeatureExtractor.extract(pcm(take), 27, 0.6f))
+        val ko = FeatureExtractor.VOICED_SEC_PER_SYLLABLE_KO
+        assertTrue(FeatureExtractor.extract(pcm(take), 27, 0.6f, secPerSyllable = ko) is Capture.Ok)
     }
 
     @Test fun wordTimingsDriveRateAndPauses() {

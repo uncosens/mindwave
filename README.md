@@ -17,14 +17,14 @@ An offline Android app that reads your mood from your voice. No server, no brows
 
 - Voice metrics: pitch, pitch variation, tone energy, speech rate, breathing pauses, reading accuracy, pitch tremor and volume tremor.
 - The baseline is the median of your last 14 anchor readings, so it follows slow changes.
-- Speech-to-text runs on the phone with Vosk. Free talk is scored with a small word list.
+- Speech-to-text runs on the phone: Vosk for English, sherpa-onnx for Korean. Free talk is scored with a small word list.
 - All data stays in one JSON file inside the app.
 
 This is not a medical or psychological diagnosis.
 
 ## Build
 
-1. Get the speech models, English and Korean (about 120 MB):
+1. Get the speech models and the sherpa-onnx library (about 220 MB):
    `powershell -File scripts/fetch-model.ps1`
 2. Build and install:
    `gradlew installDebug`
