@@ -2,12 +2,10 @@
 package com.uncosens.mindwave.ui
 
 import androidx.compose.animation.core.CubicBezierEasing
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Shapes
 import androidx.compose.material3.Typography
-import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -38,23 +36,6 @@ private val LightColors = lightColorScheme(
     scrim = Color(0xFF000000),
 )
 
-private val DarkColors = darkColorScheme(
-    background = Color(0xFF0D0D10), onBackground = Color(0xFFECECEF),
-    surface = Color(0xFF0D0D10), onSurface = Color(0xFFECECEF),
-    surfaceVariant = Color(0xFF1B1B20), onSurfaceVariant = Color(0xFF9A9AA3),
-    surfaceContainerLowest = Color(0xFF0A0A0D), surfaceContainerLow = Color(0xFF121216),
-    surfaceContainer = Color(0xFF16161B), surfaceContainerHigh = Color(0xFF1D1D23),
-    surfaceContainerHighest = Color(0xFF25252C),
-    primary = Color(0xFF9AA5FF), onPrimary = Color(0xFF10166B),
-    primaryContainer = Color(0xFF262E86), onPrimaryContainer = Color(0xFFE0E3FF),
-    secondary = Color(0xFFC4C2D6), onSecondary = Color(0xFF2E2D3D),
-    secondaryContainer = Color(0xFF2E2D3D), onSecondaryContainer = Color(0xFFE7E5F2),
-    tertiary = Color(0xFFFFB08F), onTertiary = Color(0xFF4A1A06),
-    error = Color(0xFFFF8A75), onError = Color(0xFF4A0D04),
-    errorContainer = Color(0xFF5C1A10), onErrorContainer = Color(0xFFFFDAD3),
-    outline = Color(0xFF36363E), outlineVariant = Color(0xFF24242B),
-    scrim = Color(0xFF000000),
-)
 
 /** Data colors that are not part of the M3 scheme. */
 @Immutable
@@ -72,10 +53,6 @@ private val LightExtra = MindwaveColors(
     metric = Color(0xFF16161A), deviationTrack = Color(0xFFECEBE7), deviationBand = Color(0xFFDCDBD5),
 )
 
-private val DarkExtra = MindwaveColors(
-    valence = Color(0xFFFF9C78), arousal = Color(0xFF8F9BFF), stability = Color(0xFF5FD3B4),
-    metric = Color(0xFFECECEF), deviationTrack = Color(0xFF1F1F25), deviationBand = Color(0xFF2C2C34),
-)
 
 val LocalMindwaveColors = staticCompositionLocalOf { LightExtra }
 
@@ -128,11 +105,12 @@ object Motion {
     val EaseExit = CubicBezierEasing(0.3f, 0f, 0.8f, 0.15f)
 }
 
+// Light mode only, whatever the system setting.
 @Composable
-fun MindwaveTheme(darkTheme: Boolean = isSystemInDarkTheme(), content: @Composable () -> Unit) {
-    CompositionLocalProvider(LocalMindwaveColors provides if (darkTheme) DarkExtra else LightExtra) {
+fun MindwaveTheme(content: @Composable () -> Unit) {
+    CompositionLocalProvider(LocalMindwaveColors provides LightExtra) {
         MaterialTheme(
-            colorScheme = if (darkTheme) DarkColors else LightColors,
+            colorScheme = LightColors,
             typography = MindwaveTypography,
             shapes = MindwaveShapes,
             content = content,

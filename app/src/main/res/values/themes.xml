@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Light only: the window stays light and the system never forces dark colors. -->
+    <style name="Theme.Mindwave" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/background</item>
+        <item name="android:forceDarkAllowed">false</item>
+    </style>
+    <color name="background">#FFF6F5F2</color>
+</resources>

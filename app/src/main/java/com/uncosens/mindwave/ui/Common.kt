@@ -60,18 +60,19 @@ fun PrimaryButton(text: String, onClick: () -> Unit, enabled: Boolean = true) =
 
 // Line icon from a 24x24 SVG path, drawn with a 1.8 stroke like the prototype.
 @Composable
-fun StrokeIcon(path: String, modifier: Modifier = Modifier.size(24.dp), color: Color = MaterialTheme.colorScheme.onSurface) {
+fun StrokeIcon(path: String, modifier: Modifier = Modifier.size(24.dp), color: Color = MaterialTheme.colorScheme.onSurface, width: Float = 1.8f) {
     val p = remember(path) { PathParser().parsePathString(path).toPath() }
     Canvas(modifier) {
         scale(size.minDimension / 24f, pivot = Offset.Zero) {
-            drawPath(p, color, style = Stroke(1.8f, cap = StrokeCap.Round, join = StrokeJoin.Round))
+            drawPath(p, color, style = Stroke(width, cap = StrokeCap.Round, join = StrokeJoin.Round))
         }
     }
 }
 
 object Icons {
     const val CHART = "M4 19V5M4 19h16M8 15l3-4 3 2 5-6"
-    const val GEAR = "M15 12a3 3 0 1 1-6 0a3 3 0 1 1 6 0M12 2v3M12 19v3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M2 12h3M19 12h3M4.9 19.1L7 17M17 7l2.1-2.1"
+    // Material "settings" gear outline, so it is not mistaken for a theme (sun) toggle.
+    const val GEAR = "M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM15.2 12a3.2 3.2 0 1 1-6.4 0a3.2 3.2 0 1 1 6.4 0"
     const val MIC = "M9 6a3 3 0 0 1 6 0v6a3 3 0 0 1-6 0zM5 11a7 7 0 0 0 14 0M12 18v3"
 }
 
