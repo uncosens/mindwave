@@ -54,7 +54,8 @@ object Analyzer {
         anchorBase: Baseline,
         dailyBase: Baseline,
         text: Sentiment.Result,
-        valenceWeights: Map<Metric, Float> = PersonalWeights.PRIOR,
+        valenceWeights: Map<Metric, Float> = PersonalWeights.VALENCE_PRIOR,
+        arousalWeights: Map<Metric, Float> = PersonalWeights.AROUSAL_PRIOR,
     ): Assessment {
         val z = Metric.entries.associateWith { m ->
             val parts = mutableListOf(anchorBase.z(m, anchor))
@@ -64,9 +65,8 @@ object Analyzer {
         }
         fun v(m: Metric) = z.getValue(m)
 
-        // Heuristic weights: louder, higher, faster speech reads as more aroused.
-        val arousal = tanh((0.35f * v(Metric.PITCH) + 0.3f * v(Metric.ENERGY) + 0.25f * v(Metric.RATE) +
-            0.2f * v(Metric.PITCH_VAR) - 0.15f * v(Metric.PAUSES)) / 1.5f)
+        // Weights start hand-set and adapt to the user's own ratings over time.
+        val arousal = tanh(arousalWeights.entries.sumOf { (m, w) -> (w * v(m)).toDouble() }.toFloat())
         // Weak signal, so text dominates when present. Weights adapt to the user over time.
         val voiceValence = tanh(valenceWeights.entries.sumOf { (m, w) -> (w * v(m)).toDouble() }.toFloat())
         val valence = if (text.hits > 0) 0.6f * text.score + 0.4f * voiceValence else voiceValence

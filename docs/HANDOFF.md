@@ -18,21 +18,28 @@ Background:
 - App language is English. Replies to the user are in Korean.
 - Do not show "how it works" text in the app (no algorithm, baseline or research
   explanations). Keep only instructions, errors, confirmations and the
-  "Mindwave is not a medical tool." line.
+  "mindwave is not a medical tool." line. A short status such as
+  "Still learning your usual voice" is fine.
+- The app name is always lowercase: "mindwave".
 - Reading accuracy is used only to check that the right text was read.
   It is not part of the analysis.
-- "Start over" during a recording is allowed once per step.
+- "Try again" during a recording is allowed once per step.
+- Voice and mood data never leave the phone: backup and device transfer are off.
 
 ## Flow
 
-1. First run: Welcome -> mic permission -> calibration: read the anchor 3 times.
+1. First run: Welcome -> mic pre-prompt (only if not yet granted) -> calibration:
+   read the anchor 3 times.
 2. Check-in: anchor (`Sentences.ANCHOR`, 62 words) -> sentence of the day ->
-   free talk with live transcript (or read a random passage instead) -> mood 1-5
-   -> analyzing -> result.
+   free talk with live transcript (or read a random passage instead) -> review and
+   correct the transcript (free talk only) -> mood 1-5 and energy 1-5 -> analyzing -> result.
+   Reading steps end by themselves once the whole text is heard and the voice stops.
 3. History (7/30/all days) and Settings (recalibrate, delete all data).
 
 If `Sentences.ANCHOR` changes, the app asks for recalibration, and only check-ins
-read with the current anchor join the baseline.
+read with the current anchor join the baseline. Each calibration and check-in also stores
+the phone model and mic source (UNPROCESSED or VOICE_RECOGNITION); only matching ones are
+compared, and Home suggests recalibrating when they differ from the calibration.
 
 ## Code map
 
@@ -45,22 +52,30 @@ read with the current anchor join the baseline.
 | `analysis/VoiceFeatures.kt` | Feature extraction, the quality gate and `FeatureExtractor.VERSION` |
 | `analysis/Perturbation.kt` | Cycle-level jitter and shimmer (Praat-style cross-correlation marks) |
 | `analysis/Analyzer.kt` | Metrics, robust baseline (median/MAD, 14 days), arousal/valence/stability |
-| `analysis/PersonalWeights.kt` | Ridge regression from mood ratings to voice-valence weights |
+| `analysis/PersonalWeights.kt` | Ridge regression: mood rating -> valence weights, energy rating -> arousal weights |
 | `analysis/Sentiment.kt` | Small lexicon sentiment for the free-talk transcript |
 | `data/` | Sentences, passages, JSON store (`filesDir/data.json`) |
 | `ui/` | Compose screens, theme, voice orb (AGSL shader on API 33+, Canvas below) |
 
 ## Done and verified
 
-- `gradlew testDebugUnitTest assembleDebug` passed (8 unit tests) before the jitter/shimmer
-  change. The Android build has not been run since (the cloud container could not reach
-  the Android SDK). Run it first. What was checked instead:
-  - The 11 unit tests pass on a plain JVM (the analysis code has no Android dependencies).
-  - All app code type-checks against Compose Desktop 1.6.11 with stubs for Android classes.
-    The only errors were `interactionSource = null`, which needs Compose 1.7+ (the app's BOM has it).
-  - None of the UI added after that (see "UI items built" below) has been seen on screen.
-- Installed on a Galaxy Tab S7 (SM-T870, Android 13): the Vosk model loads
-  and the welcome screen and orb render correctly.
+- `gradlew testDebugUnitTest assembleDebug` passes (14 unit tests) on the original machine.
+- Installed on a Galaxy Tab S7 (SM-T870, Android 13): the app opens, the Slices launcher
+  icon shows, the Vosk model loads, and the welcome and calibration screens render.
+- The merged manifest has no INTERNET permission (only RECORD_AUDIO).
+- Recently added, built but not yet tried by voice:
+  - Backup off: `allowBackup="false"`, `res/xml/backup_rules.xml`, `res/xml/data_extraction_rules.xml`.
+  - Energy 1-5 next to mood (`CheckIn.energy`, null on older days); `PersonalWeights.arousal`
+    learns from it like `valence` learns from mood.
+  - Clipping check: more than 0.1 % of speech samples at |x| >= 32700 -> `Reject.CLIPPED`.
+  - Device model and mic source stored and compared (see Flow).
+  - Results are shown at half strength with "Still learning your usual voice" while the
+    day's anchor baseline has fewer than `MainViewModel.MIN_BASELINE` (7) readings.
+  - Free-talk transcript review: the edited text is scored; `CheckIn.transcriptRaw` keeps
+    the original.
+  - Read-progress uses edit-distance alignment (`TextTools.readProgress`), so misheard words
+    no longer stall it; a take counts as long enough when accuracy >= 0.8.
+  - Mic pre-prompt screen, Home icon buttons, lowercase app name.
 
 Not verified yet: the full check-in by voice on a real device, so thresholds and
 the orb's reaction to a real voice have never been seen working.
@@ -78,8 +93,17 @@ the orb's reaction to a real voice have never been seen working.
 
 1. **End-to-end test on a phone.** Do calibration and a few check-ins. Tune:
    `FeatureExtractor.MIN_SNR_DB` (15 dB), `MIN_SPEECH_DB` (-45 dB),
-   `VOICED_SEC_PER_SYLLABLE` (0.09 s), the 0.3 accuracy check in
+   `VOICED_SEC_PER_SYLLABLE` (0.09 s), the clipping limit (0.1 %), the 0.3 accuracy check in
    `MainViewModel.measure`, and the speaking threshold in `Recorder` (level 0.35).
+   Test checklist, each with calibration and at least one check-in:
+   - quiet room
+   - fan or road noise
+   - whisper
+   - loud voice (expect the clipping retry when very close)
+   - fast speech
+   - hoarse voice
+   - airplane mode (everything must still work)
+   - 30 days of daily use (baseline, "still learning" state, personal weights after 28 days)
 2. **Check cycle jitter/shimmer on real voices.** The Praat-style method is built (see
    "Cycle-level jitter and shimmer" below) but has only been compared with Praat on
    synthetic voices. Record sustained /a/ and the anchor on the phone, run Praat
@@ -94,11 +118,10 @@ the orb's reaction to a real voice have never been seen working.
    missing (see `design/DESIGN.md`): captured pulse (4.3), the Analyzing → Result shared-element
    orb (4.7), result reveal and chart draw-in motion (6), the History "Day detail" bottom sheet
    (the tooltip opens the Result screen instead), and the read-progress fallback from voiced
-   time when no recognizer words arrive. The app icon is not set; logo concepts are in
-   `design/logo/`.
+   time when no recognizer words arrive.
 
 The three accuracy items from the research are already implemented:
-per-user weights from mood (`PersonalWeights`, starts after 28 check-ins),
+per-user weights from mood and energy (`PersonalWeights`, starts after 28 check-ins),
 the quality gate with retry (`Capture`/`Reject`), and speech rate and pauses from
 Vosk word timestamps (falls back to energy VAD). They still need tuning on real data.
 
@@ -125,7 +148,7 @@ and 5-10 % higher with noise.
 ## UI items built (not yet seen on a device)
 
 - **Read-progress highlight** (DESIGN 4.4): every step now streams to Vosk while recording.
-  `TextTools.readProgress` matches heard words in order to the next 4 target words;
+  `TextTools.readProgress` aligns the heard words to the text by edit distance;
   `ReadingText` dims unread words to 38 % and fades each in over 200 ms. It is one text node.
   Reading steps still re-transcribe the whole take afterwards for word timings, so Vosk runs
   twice on those steps; check that the delay after "Done" is acceptable.

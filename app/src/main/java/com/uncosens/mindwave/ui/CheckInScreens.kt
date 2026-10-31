@@ -25,7 +25,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.AlertDialog
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -297,13 +299,26 @@ private fun ReadingText(text: String, progress: Int?, modifier: Modifier, style:
 
 @Composable
 fun MoodScreen(vm: MainViewModel) = Page {
-    var picked by remember { mutableIntStateOf(0) }
-    val haptic = LocalHapticFeedback.current
-    val labels = listOf("Very low", "Low", "Okay", "Good", "Great")
+    var mood by remember { mutableIntStateOf(0) }
+    var energy by remember { mutableIntStateOf(0) }
     TopBar("✕", { vm.confirmStop = true }) { StepDots(4) }
     Spacer(Modifier.weight(1f))
-    Text("How do you feel right now?", style = MaterialTheme.typography.headlineMedium, textAlign = TextAlign.Center)
+    RatingRow("How do you feel right now?", listOf("Very low", "Low", "Okay", "Good", "Great"), mood) { mood = it }
     Spacer(Modifier.height(Dimens.xxl))
+    RatingRow("How much energy do you have?", listOf("Drained", "Low", "Okay", "High", "Full of energy"), energy) { energy = it }
+    Spacer(Modifier.weight(1f))
+    PrimaryButton("See result", { vm.finish(mood, energy) }, enabled = mood > 0 && energy > 0)
+    Spacer(Modifier.height(Dimens.l))
+
+    StopDialog(vm)
+}
+
+// A 1-5 question: five circles, the picked label under them, and end labels.
+@Composable
+private fun RatingRow(question: String, labels: List<String>, picked: Int, onPick: (Int) -> Unit) {
+    val haptic = LocalHapticFeedback.current
+    Text(question, style = MaterialTheme.typography.headlineMedium, textAlign = TextAlign.Center)
+    Spacer(Modifier.height(Dimens.l))
     Row(horizontalArrangement = Arrangement.spacedBy(Dimens.s)) {
         for (i in 1..5) {
             val on = picked == i
@@ -314,7 +329,7 @@ fun MoodScreen(vm: MainViewModel) = Page {
             Box(
                 Modifier.size(52.dp).scale(scale).clip(CircleShape).background(bg).clickable {
                     if (picked != i) haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                    picked = i
+                    onPick(i)
                 },
                 contentAlignment = Alignment.Center,
             ) {
@@ -325,13 +340,27 @@ fun MoodScreen(vm: MainViewModel) = Page {
     }
     Spacer(Modifier.height(Dimens.s))
     Text(if (picked == 0) " " else labels[picked - 1], style = MaterialTheme.typography.titleMedium)
-    Spacer(Modifier.height(Dimens.m))
+    Spacer(Modifier.height(Dimens.xs))
     Row(Modifier.widthIn(max = 308.dp).fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-        Text("Very low", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text("Great", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(labels.first(), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(labels.last(), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
+}
+
+// Lets the user fix what the recognizer heard before it is scored.
+@Composable
+fun ReviewScreen(vm: MainViewModel) = Page {
+    var text by remember { mutableStateOf(vm.transcript) }
+    TopBar("✕", { vm.confirmStop = true }) { StepDots(3) }
+    Spacer(Modifier.height(Dimens.l))
+    Text("Is this what you said?", style = MaterialTheme.typography.headlineMedium, textAlign = TextAlign.Center)
+    Spacer(Modifier.height(Dimens.l))
+    OutlinedTextField(
+        text, { text = it }, Modifier.fillMaxWidth().weight(1f, fill = false).heightIn(min = 160.dp),
+        textStyle = MaterialTheme.typography.bodyLarge, shape = MaterialTheme.shapes.medium,
+    )
     Spacer(Modifier.weight(1f))
-    PrimaryButton("See result", { vm.finish(picked) }, enabled = picked > 0)
+    PrimaryButton("Looks right", { vm.confirmTranscript(text) }, enabled = text.isNotBlank())
     Spacer(Modifier.height(Dimens.l))
 
     StopDialog(vm)

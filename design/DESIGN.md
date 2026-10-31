@@ -15,7 +15,7 @@ Reference code: `design/compose/Theme.kt`, `design/compose/VoiceOrb.kt`.
 4. **Compare to yourself, not to others.** Every number is shown as "vs your usual". No absolute
    scores, no "good/bad" labels, no red/green judgment.
 5. **Calm language.** Short, warm, never clinical. Never claim a diagnosis.
-   Footer on results: "Mindwave is not a medical tool."
+   Footer on results: "mindwave is not a medical tool."
 6. **Private by default and say it once.** "Your voice never leaves this phone." appears on
    onboarding and in Settings. Raw audio is not stored (only features).
 7. **About one minute.** The whole daily check-in should take ~60 s.
@@ -73,12 +73,12 @@ Copy below is final English copy. `{}` = variable.
 - Top 96 dp: idle orb 160 dp, centered.
 - 32 dp below: `headlineLarge` "Hear how you feel."
 - 12 dp: `bodyLarge`, `onSurfaceVariant`, centered, max 300 dp wide:
-  "Read a sentence, talk for a few seconds, and Mindwave tracks your mood from your voice."
+  "Read a sentence, talk for a few seconds, and mindwave tracks your mood from your voice."
 - 24 dp: lock icon 16 dp + `bodyMedium` "Your voice never leaves this phone."
 - Bottom: [Get started]
 
 **Mic permission** (system dialog is shown right after a short pre-prompt)
-- Mic icon in a 64 dp `primaryContainer` circle, `headlineSmall` "Mindwave listens only while
+- Mic icon in a 64 dp `primaryContainer` circle, `headlineSmall` "mindwave listens only while
   the orb is lit.", `bodyMedium` "Audio is analyzed on the device and then thrown away."
 - Bottom: [Allow microphone]
 
@@ -95,7 +95,7 @@ Copy below is final English copy. `{}` = variable.
 
 **Ready**
 - Orb in `Done · neutral` palette, 160 dp. `headlineLarge` "You're all set."
-- `bodyLarge` "Check in once a day. After two weeks, Mindwave knows your usual."
+- `bodyLarge` "Check in once a day. After two weeks, mindwave knows your usual."
 - Bottom: [Go to today]
 
 ### 4.2 Home / Today
@@ -259,7 +259,7 @@ Scrollable. Top bar: ✕ (closes to Home) and title "Today" (`titleLarge`).
   │ Voice tremor    As usual      │
   └───────────────────────────────┘
 
-  Mindwave is not a medical tool.    labelMedium, centered, onSurfaceVariant
+  mindwave is not a medical tool.    labelMedium, centered, onSurfaceVariant
   [ Done ]
 ```
 
@@ -318,7 +318,7 @@ Top bar: back + "Settings". Plain list rows (56 dp, `titleMedium` + `bodyMedium`
   "All check-ins, your baseline and calibration will be removed from this phone. This can't be
   undone." [Cancel] [Delete] (`error` text). After: return to Welcome.
 - Divider, then **About**: "Version {x}", "All analysis happens on this device. No account, no
-  server, no internet." and "Mindwave is not a medical tool."
+  server, no internet." and "mindwave is not a medical tool."
 
 Theme follows the system (no toggle).
 
@@ -453,7 +453,7 @@ The orb turns to the Error palette. Haptic `Reject` once.
 
 | Case | Detection | UI |
 |---|---|---|
-| **Mic permission denied** | permission result | Full screen: grey orb 160 dp, `headlineSmall` "Mindwave needs the microphone", `bodyMedium` "It listens only during a check-in, and your voice never leaves this phone." [Allow microphone]. If "don't ask again": button becomes [Open settings] (app details intent). |
+| **Mic permission denied** | permission result | Full screen: grey orb 160 dp, `headlineSmall` "mindwave needs the microphone", `bodyMedium` "It listens only during a check-in, and your voice never leaves this phone." [Allow microphone]. If "don't ask again": button becomes [Open settings] (app details intent). |
 | **Too quiet (live)** | Listening, `L < 0.08` for 3 s and not speaking | Hint changes to "I can barely hear you — move a little closer". Orb stays listening. |
 | **Too quiet (after)** | Mean speech level < −45 dBFS | `titleMedium` "That was too quiet to analyze." `bodyMedium` "Hold the phone about 20 cm from your mouth." [Try again] |
 | **Too short (A/B)** | voiced < 60 % of expected or < 1.5 s | "That was a bit short." "Please read the whole sentence." [Try again] |
@@ -500,3 +500,6 @@ Files in `design/logo/` (preview: `design/logo/logo.html`).
   The text is live text; outline it before using outside the app.
 - Clear space = half the mark width. Never rotate, outline, add shadows or change the slice shapes.
 - Other explored directions are kept for reference in `design/logo/concepts.html`.
+
+**Name:** the app name is always lowercase, "mindwave" — launcher label, in-app copy and the wordmark,
+even at the start of a sentence.

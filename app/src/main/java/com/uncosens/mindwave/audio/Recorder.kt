@@ -15,6 +15,8 @@ class Recorder(context: Context) {
         .getProperty(AudioManager.PROPERTY_SUPPORT_AUDIO_SOURCE_UNPROCESSED) == "true"
 
     val orb = VoiceOrbInput()
+    // Stored with each reading, so only takes from the same mic path are compared.
+    val sourceName = if (unprocessed) "UNPROCESSED" else "VOICE_RECOGNITION"
     // Gets a copy of every chunk on the recorder thread, e.g. for live speech-to-text.
     @Volatile var listener: ((ShortArray) -> Unit)? = null
     // True after a few seconds with nothing above a whisper (design/DESIGN.md 7, "Too quiet (live)").

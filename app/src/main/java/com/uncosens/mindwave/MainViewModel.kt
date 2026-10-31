@@ -1,6 +1,7 @@
 package com.uncosens.mindwave
 
 import android.app.Application
+import android.os.Build
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -33,6 +34,7 @@ sealed interface Screen {
     data object Loading : Screen
     data class Error(val text: String) : Screen
     data object Welcome : Screen
+    data object Permission : Screen
     data object CalibrationIntro : Screen
     data class Calibrate(val round: Int) : Screen
     data object Ready : Screen
@@ -40,6 +42,7 @@ sealed interface Screen {
     data object ReadAnchor : Screen
     data object ReadDaily : Screen
     data object FreeTalk : Screen
+    data object Review : Screen
     data object Mood : Screen
     data object Analyzing : Screen
     data class Result(val checkIn: CheckIn) : Screen
@@ -51,6 +54,10 @@ sealed interface Screen {
 data class Problem(val title: String, val body: String)
 
 class MainViewModel(app: Application) : AndroidViewModel(app) {
+    companion object {
+        const val MIN_BASELINE = 7 // usual readings before results are shown at full strength
+    }
+
     private val store = Store(app)
     val recorder = Recorder(app)
     private var transcriber: Transcriber? = null
@@ -71,19 +78,28 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val calibration = mutableListOf<VoiceFeatures>()
     private var anchor: VoiceFeatures? = null
     private var daily: VoiceFeatures? = null
-    private var transcript = ""
+    var transcript = ""; private set
+    private var transcriptRaw = ""
 
     // Calibration only counts if it was done with the current anchor text and feature version.
     private val calibrated get() = data.calibration.isNotEmpty() && data.calibrationAnchor == Sentences.ANCHOR &&
         data.calibration.all { it.version == FeatureExtractor.VERSION }
 
+    private val device = Build.MODEL
+    private val source = recorder.sourceName
+
+    // Calibrated on another phone or mic path: readings would not compare like with like.
+    val setupChanged get() = calibrated && (data.calibrationDevice != device || data.calibrationSource != source)
+    private val usableCalibration get() = if (setupChanged) emptyList() else data.calibration
+
     // Days before `date` that can join the baseline and the personal weights.
     private fun comparable(c: CheckIn, date: String) =
-        c.date < date && c.anchorText == Sentences.ANCHOR && c.anchor.version == FeatureExtractor.VERSION
+        c.date < date && c.anchorText == Sentences.ANCHOR && c.anchor.version == FeatureExtractor.VERSION &&
+            c.device == device && c.source == source
 
     // The anchor baseline as it was on that day, for showing usual values.
     fun baselineBefore(date: String) =
-        Baseline((data.calibration + data.checkIns.filter { comparable(it, date) }.map { it.anchor }).takeLast(Analyzer.WINDOW_DAYS))
+        Baseline((usableCalibration + data.checkIns.filter { comparable(it, date) }.map { it.anchor }).takeLast(Analyzer.WINDOW_DAYS))
 
     // The user's own pitch centers the orb's color response.
     val basePitchHz: Float
@@ -107,6 +123,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun openCalibrationIntro() = go(Screen.CalibrationIntro)
+    fun openPermission() = go(Screen.Permission)
     fun startCalibration() { calibration.clear(); go(Screen.Calibrate(1)) }
     fun startCheckIn() = go(Screen.ReadAnchor)
     fun openHistory() = go(Screen.History)
@@ -177,7 +194,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 is Screen.Calibrate -> measure(pcm, Sentences.ANCHOR, result)?.let { f ->
                     calibration += f
                     if (step.round < 3) go(Screen.Calibrate(step.round + 1)) else {
-                        data = data.copy(calibration = calibration.toList(), calibrationAnchor = Sentences.ANCHOR)
+                        data = data.copy(
+                            calibration = calibration.toList(), calibrationAnchor = Sentences.ANCHOR,
+                            calibrationDevice = device, calibrationSource = source,
+                        )
                         persist()
                         go(Screen.Ready)
                     }
@@ -189,13 +209,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         problem = Problem("That was a bit short.", "Please read the whole passage.")
                     } else {
                         transcript = heard
+                        transcriptRaw = heard
                         go(Screen.Mood)
                     }
                 } else if (pcm.size < Dsp.RATE * 8 || TextTools.words(heard).size < 5) {
                     problem = Problem("Talk a little longer.", "Anything works — what you ate, what you saw.")
                 } else {
                     transcript = heard
-                    go(Screen.Mood)
+                    transcriptRaw = heard
+                    go(Screen.Review)
                 }
                 else -> Unit
             }
@@ -203,7 +225,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun finish(mood: Int) {
+    // The user's corrected free-talk text; the raw recognition is kept too.
+    fun confirmTranscript(text: String) {
+        transcript = text.trim()
+        go(Screen.Mood)
+    }
+
+    fun finish(mood: Int, energy: Int) {
         val a = anchor ?: return
         val d = daily ?: return
         go(Screen.Analyzing)
@@ -211,18 +239,19 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             delay(1200) // Let the analyzing orb show instead of flashing.
             val today = LocalDate.now().toString()
             val recent = data.checkIns.filter { comparable(it, today) }.takeLast(Analyzer.WINDOW_DAYS)
-            val anchorBase = Baseline((data.calibration + recent.map { it.anchor }).takeLast(Analyzer.WINDOW_DAYS))
+            val anchorBase = Baseline((usableCalibration + recent.map { it.anchor }).takeLast(Analyzer.WINDOW_DAYS))
             val dailyBase = Baseline(recent.map { it.daily })
             // A read passage says nothing about mood, so only free talk is scored.
             val read = passage != null
             val text = if (read) Sentiment.Result(0f, 0) else Sentiment.score(transcript)
             // Weights come only from earlier days, so today's rating never scores today.
-            val weights = PersonalWeights.fit(data.checkIns.filter { comparable(it, today) })
-            val r = Analyzer.assess(a, d, anchorBase, dailyBase, text, weights)
+            val past = data.checkIns.filter { comparable(it, today) }
+            val r = Analyzer.assess(a, d, anchorBase, dailyBase, text, PersonalWeights.valence(past), PersonalWeights.arousal(past))
             val checkIn = CheckIn(
                 date = today, anchor = a, daily = d, transcript = transcript, textSentiment = text.score, mood = mood,
                 z = r.z.mapKeys { it.key.name }, arousal = r.arousal, valence = r.valence, stability = r.stability,
                 label = Analyzer.label(r.arousal, r.valence, r.stability), anchorText = Sentences.ANCHOR, readPassage = read,
+                energy = energy, transcriptRaw = transcriptRaw, device = device, source = source, baselineSize = anchorBase.size,
             )
             data = data.copy(checkIns = data.checkIns.filter { it.date != today } + checkIn)
             persist()
@@ -248,6 +277,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     Reject.TOO_QUIET -> Problem("That was too quiet to analyze.", "Hold the phone about 20 cm from your mouth.")
                     Reject.NOISY -> Problem("It's noisy around you.", "Find a quieter spot and try again.")
                     Reject.TOO_SHORT -> Problem("That was a bit short.", "Please read the whole sentence.")
+                    Reject.CLIPPED -> Problem("That was too loud.", "Hold the phone a little farther away and read again.")
                 }
                 null
             }

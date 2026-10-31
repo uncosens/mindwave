@@ -22,7 +22,7 @@ data class VoiceFeatures(
 // One recognized word with times in seconds.
 data class Word(val text: String, val start: Float, val end: Float)
 
-enum class Reject { TOO_QUIET, NOISY, TOO_SHORT }
+enum class Reject { TOO_QUIET, NOISY, TOO_SHORT, CLIPPED }
 
 sealed interface Capture {
     data class Ok(val features: VoiceFeatures) : Capture
@@ -35,6 +35,8 @@ object FeatureExtractor {
     const val MIN_SPEECH_DB = -45f
     const val VOICED_SEC_PER_SYLLABLE = 0.09f // 74-syllable anchor needs about 6.7 s of voicing
     private const val MIN_VOICED_SEC = 0.5f
+    private const val CLIP_LEVEL = 32700 // at or near 16-bit full scale
+    private const val MAX_CLIPPED = 0.001f // share of speech samples
     private const val FULL_READ = 0.8f // reading accuracy that counts as having read the whole text
     private const val HOP = 320      // 20 ms
     private const val WIN = 640      // 40 ms
@@ -56,6 +58,12 @@ object FeatureExtractor {
         val last = active.indexOfLast { it }
         // Nothing rises above the floor: blame noise if the floor itself is loud.
         if (first < 0 || active.count { it } < 15) return Capture.Bad(if (Dsp.db(floor) > -40f) Reject.NOISY else Reject.TOO_QUIET)
+
+        // Clipped samples flatten the peaks that pitch and tremor are measured from.
+        val from = first * HOP
+        val to = minOf(last * HOP + WIN, pcm.size)
+        val clipped = (from until to).count { pcm[it] >= CLIP_LEVEL || pcm[it] <= -CLIP_LEVEL }
+        if (clipped > (to - from) * MAX_CLIPPED) return Capture.Bad(Reject.CLIPPED)
 
         var pauseFrames = 0
         var run = 0

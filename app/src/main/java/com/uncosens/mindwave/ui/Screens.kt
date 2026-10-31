@@ -20,7 +20,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.foundation.layout.offset
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
@@ -32,6 +34,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
@@ -66,10 +69,25 @@ private fun Intro(vm: MainViewModel, state: OrbState, title: String, body: Strin
 }
 
 @Composable
-fun WelcomeScreen(vm: MainViewModel, onNeedPermission: (() -> Unit) -> Unit) = Intro(
+fun WelcomeScreen(vm: MainViewModel, hasMic: Boolean) = Intro(
     vm, OrbState.Idle, "Hear how you feel.", null,
-    "Get started", { onNeedPermission(vm::openCalibrationIntro) },
+    "Get started", if (hasMic) vm::openCalibrationIntro else vm::openPermission,
 )
+
+// Shown once before the system mic dialog.
+@Composable
+fun PermissionScreen(vm: MainViewModel, onNeedPermission: (() -> Unit) -> Unit) = Page {
+    Spacer(Modifier.weight(1f))
+    Box(Modifier.size(64.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primaryContainer), contentAlignment = Alignment.Center) {
+        StrokeIcon(Icons.MIC, Modifier.size(28.dp), MaterialTheme.colorScheme.onPrimaryContainer)
+    }
+    Spacer(Modifier.height(Dimens.l))
+    Text("mindwave listens only while the orb is lit.", Modifier.widthIn(max = 300.dp),
+        style = MaterialTheme.typography.headlineSmall, textAlign = TextAlign.Center)
+    Spacer(Modifier.weight(1f))
+    PrimaryButton("Allow microphone", { onNeedPermission(vm::openCalibrationIntro) })
+    Spacer(Modifier.height(Dimens.l))
+}
 
 @Composable
 fun CalibrationIntroScreen(vm: MainViewModel) = Intro(
@@ -89,7 +107,7 @@ fun ReadyScreen(vm: MainViewModel) = Intro(
 
 @Composable
 fun MicDeniedScreen(vm: MainViewModel, openSettings: Boolean, onRetry: () -> Unit) = Intro(
-    vm, OrbState.Error, "Mindwave needs the microphone", null,
+    vm, OrbState.Error, "mindwave needs the microphone", null,
     if (openSettings) "Open settings" else "Allow microphone", onRetry,
 )
 
@@ -108,19 +126,32 @@ fun HomeScreen(vm: MainViewModel) = Page {
     val today = LocalDate.now()
     val checkIns = vm.data.checkIns
     val todays = checkIns.lastOrNull()?.takeIf { it.date == today.toString() }
-    val last = checkIns.lastOrNull()
     val hour = LocalTime.now().hour
     val greeting = when (hour) { in 5..11 -> "Good morning"; in 12..17 -> "Good afternoon"; else -> "Good evening" }
     val streak = streak(checkIns)
 
-    Spacer(Modifier.height(Dimens.l))
+    // Yesterday's (or the latest earlier) record, shown on the card.
+    val previous = checkIns.lastOrNull { it.date < today.toString() }
+
+    Spacer(Modifier.height(Dimens.m))
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
         Column(Modifier.weight(1f)) {
             Text(greeting, style = MaterialTheme.typography.headlineLarge)
-            Muted(today.format(dayFormat), align = TextAlign.Start)
+            Muted(today.format(dayFormat), Modifier.padding(top = 2.dp), align = TextAlign.Start)
         }
-        TextButton(onClick = vm::openHistory) { Text("History") }
-        TextButton(onClick = vm::openSettings) { Text("Settings") }
+        IconButton(onClick = vm::openHistory) { StrokeIcon(Icons.CHART) }
+        IconButton(onClick = vm::openSettings, Modifier.offset(x = 12.dp)) { StrokeIcon(Icons.GEAR) }
+    }
+    if (vm.setupChanged) {
+        Spacer(Modifier.height(Dimens.s))
+        Row(
+            Modifier.fillMaxWidth().clip(MaterialTheme.shapes.medium).background(MaterialTheme.colorScheme.surfaceContainer)
+                .clickable(onClick = vm::openCalibrationIntro).padding(Dimens.m),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("Your phone or microphone changed.", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+            Text("Recalibrate", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+        }
     }
     if (streak > 0) {
         Spacer(Modifier.height(Dimens.s))
@@ -134,33 +165,33 @@ fun HomeScreen(vm: MainViewModel) = Page {
             Text("$streak-day streak", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
         }
     }
-    Spacer(Modifier.weight(1f))
-    VoiceOrb(
-        vm.recorder.orb, if (todays != null) OrbState.Done else OrbState.Idle, size = 160.dp, valence = todays?.valence ?: 0f,
-        modifier = Modifier.clickable(interactionSource = null, indication = null) {
-            if (todays != null) vm.openResult(todays) else vm.startCheckIn()
-        },
-    )
-    Spacer(Modifier.weight(1f))
-    Column(Modifier.fillMaxWidth()) {
+    Box(Modifier.fillMaxWidth().padding(top = Dimens.xs).height(220.dp), contentAlignment = Alignment.Center) {
+        VoiceOrb(
+            vm.recorder.orb, if (todays != null) OrbState.Done else OrbState.Idle, size = 160.dp, valence = todays?.valence ?: 0f,
+            modifier = Modifier.clickable(interactionSource = null, indication = null) {
+                if (todays != null) vm.openResult(todays) else vm.startCheckIn()
+            },
+        )
+    }
+    Column(Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState())) {
         Text(if (todays == null) "Today's check-in" else "Today: ${todays.label}", style = MaterialTheme.typography.titleLarge)
-        if (todays == null && last != null) {
+        if (previous != null) {
             Spacer(Modifier.height(Dimens.l))
             Column(
                 Modifier.fillMaxWidth().clip(MaterialTheme.shapes.medium).background(MaterialTheme.colorScheme.surfaceContainer)
-                    .clickable { vm.openResult(last) }.padding(Dimens.m),
+                    .clickable { vm.openResult(previous) }.padding(Dimens.m),
             ) {
-                Text("Last check-in · ${relativeDay(last.date)}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Spacer(Modifier.height(4.dp))
-                Text(last.label, style = MaterialTheme.typography.titleMedium)
+                Text("Last check-in · ${relativeDay(previous.date)}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.height(6.dp))
+                Text(previous.label, style = MaterialTheme.typography.titleMedium)
                 Spacer(Modifier.height(Dimens.s))
-                MiniBar("Mood", (last.valence + 1) / 2, LocalMindwaveColors.current.valence)
-                MiniBar("Energy", (last.arousal + 1) / 2, LocalMindwaveColors.current.arousal)
-                MiniBar("Steady", last.stability, LocalMindwaveColors.current.stability)
+                MiniBar("Energy", (previous.arousal + 1) / 2, LocalMindwaveColors.current.arousal)
+                MiniBar("Mood", (previous.valence + 1) / 2, LocalMindwaveColors.current.valence)
+                MiniBar("Stability", previous.stability, LocalMindwaveColors.current.stability)
             }
         }
     }
-    Spacer(Modifier.height(Dimens.l))
+    Spacer(Modifier.height(Dimens.m))
     if (todays == null) PrimaryButton("Start check-in", vm::startCheckIn) else {
         PrimaryButton("See today's result", { vm.openResult(todays) })
         Spacer(Modifier.height(Dimens.s))
@@ -179,7 +210,7 @@ private fun relativeDay(iso: String): String {
 
 @Composable
 private fun MiniBar(label: String, t: Float, color: Color) = Row(Modifier.padding(vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
-    Text(label, Modifier.width(64.dp), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Text(label, Modifier.width(72.dp), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
     StateBar(t, color)
 }
 
@@ -196,6 +227,12 @@ fun ResultScreen(vm: MainViewModel, c: CheckIn) = Page {
     Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), horizontalAlignment = Alignment.CenterHorizontally) {
         VoiceOrb(vm.recorder.orb, OrbState.Done, size = Dimens.orbSizeSmall, valence = c.valence)
         Text(c.label, style = MaterialTheme.typography.headlineSmall, textAlign = TextAlign.Center)
+        // Few usual readings yet: show the numbers, but quieter.
+        val learning = c.baselineSize < MainViewModel.MIN_BASELINE
+        if (learning) {
+            Text("Still learning your usual voice", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Column(Modifier.alpha(if (learning) 0.5f else 1f)) {
         Spacer(Modifier.height(Dimens.l))
         Card {
             Text("Your state", style = MaterialTheme.typography.titleMedium)
@@ -205,7 +242,8 @@ fun ResultScreen(vm: MainViewModel, c: CheckIn) = Page {
             StateRow("Stability", "", "steady", c.stability, c3.stability)
             Spacer(Modifier.height(Dimens.xs))
             val moodLabel = listOf("Very low", "Low", "Okay", "Good", "Great")[c.mood - 1]
-            Muted("You said ${c.mood} · $moodLabel", align = TextAlign.Start)
+            val energyPart = c.energy?.let { " · Energy $it" }.orEmpty()
+            Muted("You said ${c.mood} · $moodLabel$energyPart", align = TextAlign.Start)
         }
         Spacer(Modifier.height(Dimens.l))
         Text("Compared to your usual", Modifier.fillMaxWidth(), style = MaterialTheme.typography.titleMedium)
@@ -224,8 +262,9 @@ fun ResultScreen(vm: MainViewModel, c: CheckIn) = Page {
                 }
             }
         }
+        }
         Spacer(Modifier.height(Dimens.l))
-        Text("Mindwave is not a medical tool.", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("mindwave is not a medical tool.", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(Dimens.m))
     }
     PrimaryButton("Done", vm::goHome)
@@ -300,7 +339,7 @@ fun SettingsScreen(vm: MainViewModel, version: String) = Page {
         Text("About", style = MaterialTheme.typography.titleMedium)
         Spacer(Modifier.height(Dimens.xs))
         Muted("Version $version", align = TextAlign.Start)
-        Muted("Mindwave is not a medical tool.", align = TextAlign.Start)
+        Muted("mindwave is not a medical tool.", align = TextAlign.Start)
     }
     if (confirm) AlertDialog(
         onDismissRequest = { confirm = false },

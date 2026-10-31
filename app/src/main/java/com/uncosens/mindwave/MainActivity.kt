@@ -38,6 +38,8 @@ import com.uncosens.mindwave.ui.ReadyScreen
 import com.uncosens.mindwave.ui.ResultScreen
 import com.uncosens.mindwave.ui.SettingsScreen
 import com.uncosens.mindwave.ui.VoiceStepScreen
+import com.uncosens.mindwave.ui.PermissionScreen
+import com.uncosens.mindwave.ui.ReviewScreen
 import com.uncosens.mindwave.ui.WelcomeScreen
 
 private fun transitionKey(s: Screen): Any = when (s) {
@@ -76,7 +78,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             MindwaveTheme {
                 val s = vm.screen
-                val inCheckIn = s == Screen.ReadAnchor || s == Screen.ReadDaily || s == Screen.FreeTalk || s == Screen.Mood
+                val inCheckIn = s == Screen.ReadAnchor || s == Screen.ReadDaily || s == Screen.FreeTalk || s == Screen.Review || s == Screen.Mood
                 BackHandler(enabled = s != Screen.Home && s != Screen.Welcome && s != Screen.Analyzing) {
                     if (inCheckIn) vm.confirmStop = true else vm.goHome()
                 }
@@ -104,11 +106,13 @@ class MainActivity : ComponentActivity() {
                     when (shown) {
                         Screen.Loading -> MessageScreen("Preparing…")
                         is Screen.Error -> MessageScreen(shown.text)
-                        Screen.Welcome -> WelcomeScreen(vm, ::withMic)
+                        Screen.Welcome -> WelcomeScreen(vm, hasMic())
+                        Screen.Permission -> PermissionScreen(vm, ::withMic)
                         Screen.CalibrationIntro -> CalibrationIntroScreen(vm)
                         is Screen.Calibrate, Screen.ReadAnchor, Screen.ReadDaily, Screen.FreeTalk -> VoiceStepScreen(vm, shown, ::withMic)
                         Screen.Ready -> ReadyScreen(vm)
                         Screen.Home -> HomeScreen(vm)
+                        Screen.Review -> ReviewScreen(vm)
                         Screen.Mood -> MoodScreen(vm)
                         Screen.Analyzing -> AnalyzingScreen(vm)
                         is Screen.Result -> ResultScreen(vm, shown.checkIn)

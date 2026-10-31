@@ -19,6 +19,14 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.remember
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.scale
+import androidx.compose.ui.graphics.vector.PathParser
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -26,9 +34,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.uncosens.mindwave.analysis.Metric
@@ -51,6 +57,23 @@ fun PrimaryButton(text: String, onClick: () -> Unit, enabled: Boolean = true) =
     Button(onClick, Modifier.fillMaxWidth().height(Dimens.buttonHeight), enabled = enabled, shape = CircleShape) {
         Text(text, style = MaterialTheme.typography.labelLarge)
     }
+
+// Line icon from a 24x24 SVG path, drawn with a 1.8 stroke like the prototype.
+@Composable
+fun StrokeIcon(path: String, modifier: Modifier = Modifier.size(24.dp), color: Color = MaterialTheme.colorScheme.onSurface) {
+    val p = remember(path) { PathParser().parsePathString(path).toPath() }
+    Canvas(modifier) {
+        scale(size.minDimension / 24f, pivot = Offset.Zero) {
+            drawPath(p, color, style = Stroke(1.8f, cap = StrokeCap.Round, join = StrokeJoin.Round))
+        }
+    }
+}
+
+object Icons {
+    const val CHART = "M4 19V5M4 19h16M8 15l3-4 3 2 5-6"
+    const val GEAR = "M15 12a3 3 0 1 1-6 0a3 3 0 1 1 6 0M12 2v3M12 19v3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M2 12h3M19 12h3M4.9 19.1L7 17M17 7l2.1-2.1"
+    const val MIC = "M9 6a3 3 0 0 1 6 0v6a3 3 0 0 1-6 0zM5 11a7 7 0 0 0 14 0M12 18v3"
+}
 
 @Composable
 fun SecondaryButton(text: String, onClick: () -> Unit) =

@@ -96,6 +96,37 @@ class AnalysisTest {
         assertTrue(FeatureExtractor.extract(ShortArray(Dsp.RATE), 10, 1f) is Capture.Bad)
     }
 
+    @Test fun sameRecordingGivesSameFeatures() {
+        val rnd = java.util.Random(3)
+        // A wobbling tone with light noise, so every feature has something to measure.
+        val x = FloatArray(4000) + FloatArray(Dsp.RATE * 3) {
+            val hz = 150f + 8f * sin(2 * PI * 5 * it / Dsp.RATE).toFloat()
+            0.3f * sin(2 * PI * hz * it / Dsp.RATE).toFloat() + (rnd.nextGaussian() * 0.002).toFloat()
+        } + FloatArray(4000)
+        val words = listOf(Word("one", 0.3f, 0.8f), Word("two", 1f, 1.6f), Word("three", 2f, 3f))
+        assertEquals(FeatureExtractor.extract(pcm(x), 10, 1f, words), FeatureExtractor.extract(pcm(x), 10, 1f, words))
+    }
+
+    @Test fun qualityGateRejectsClipping() {
+        val loud = FloatArray(4000) + FloatArray(Dsp.RATE * 2) { (1.5f * sin(2 * PI * 150 * it / Dsp.RATE).toFloat()).coerceIn(-1f, 1f) } +
+            FloatArray(4000)
+        assertEquals(Capture.Bad(Reject.CLIPPED), FeatureExtractor.extract(pcm(loud), 10, 1f))
+    }
+
+    @Test fun arousalWeightsLearnFromEnergy() {
+        val f = VoiceFeatures(150f, 2f, -25f, 4f, 0.15f, 0.95f, 1f, 8f)
+        val rnd = java.util.Random(4)
+        // This user pauses less on high-energy days; the prior gives pauses only a small weight.
+        val days = (0 until 60).map { i ->
+            val p = rnd.nextGaussian().toFloat()
+            val energy = (3 - 2 * p).toInt().coerceIn(1, 5)
+            CheckIn("d$i", f, f, "", 0f, 3, mapOf("PAUSES" to p), 0f, 0f, 1f, "", energy = energy)
+        }
+        assertTrue(PersonalWeights.arousal(days).getValue(Metric.PAUSES) < -0.3f)
+        // Days without an energy rating are ignored.
+        assertEquals(PersonalWeights.AROUSAL_PRIOR, PersonalWeights.arousal(days.map { it.copy(energy = null) }))
+    }
+
     @Test fun qualityGateRejectsNoiseAndShortTakes() {
         val rnd = java.util.Random(1)
         val noise = FloatArray(Dsp.RATE * 3) { (rnd.nextGaussian() * 0.05).toFloat() }
@@ -146,7 +177,7 @@ class AnalysisTest {
     }
 
     @Test fun personalWeightsLearnFromMood() {
-        assertEquals(PersonalWeights.PRIOR, PersonalWeights.fit(emptyList()))
+        assertEquals(PersonalWeights.VALENCE_PRIOR, PersonalWeights.valence(emptyList()))
         val f = VoiceFeatures(150f, 2f, -25f, 4f, 0.15f, 0.95f, 1f, 8f)
         val rnd = java.util.Random(2)
         // This user sounds louder on good days; the prior ignores loudness.
@@ -155,7 +186,7 @@ class AnalysisTest {
             val mood = (3 + 2 * e).toInt().coerceIn(1, 5)
             CheckIn("d$i", f, f, "", 0f, mood, mapOf("ENERGY" to e), 0f, 0f, 1f, "")
         }
-        val w = PersonalWeights.fit(days)
+        val w = PersonalWeights.valence(days)
         assertTrue("energy weight ${w[Metric.ENERGY]}", w.getValue(Metric.ENERGY) > 0.3f)
     }
 

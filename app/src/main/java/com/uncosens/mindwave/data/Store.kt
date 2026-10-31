@@ -21,12 +21,19 @@ data class CheckIn(
     val label: String,
     val anchorText: String = "", // anchor read that day; only matching days join the baseline
     val readPassage: Boolean = false, // read a passage instead of free talk, so no text sentiment
+    val energy: Int? = null, // self-rated 1..5; null on older check-ins
+    val transcriptRaw: String = "", // as recognized, before the user's corrections
+    val device: String = "", // phone model and mic source; only matching days are compared
+    val source: String = "",
+    val baselineSize: Int = 0, // anchor readings the day was compared against
 )
 
 @Serializable
 data class AppData(
     val calibration: List<VoiceFeatures> = emptyList(),
     val calibrationAnchor: String = "", // anchor text used for calibration
+    val calibrationDevice: String = "",
+    val calibrationSource: String = "",
     val checkIns: List<CheckIn> = emptyList(), // oldest first, one per date
 )
 
