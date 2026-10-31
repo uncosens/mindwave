@@ -76,6 +76,10 @@ compared, and Home suggests recalibrating when they differ from the calibration.
   - Read-progress uses edit-distance alignment (`TextTools.readProgress`), so misheard words
     no longer stall it; a take counts as long enough when accuracy >= 0.8.
   - Mic pre-prompt screen, Home icon buttons, lowercase app name.
+- Native libraries are 16 KB page aligned (Vosk 0.3.75, JNA 5.19.1); checked in the APK and
+  on a Galaxy S23+ (Android 16), where the compatibility warning no longer appears.
+- Light mode only (`Theme.Mindwave` with `forceDarkAllowed=false`); checked on the S23+ with
+  system dark mode on.
 
 Not verified yet: the full check-in by voice on a real device, so thresholds and
 the orb's reaction to a real voice have never been seen working.
@@ -171,8 +175,6 @@ and 5-10 % higher with noise.
 
 - Passage mode on small phones: the passage and orb share one screen and may feel
   cramped (the transcript is gone from passage mode, which helps).
-- `vosk-android` 0.3.47 native libraries may not be 16 KB page aligned, which
-  Google Play requires for new apps targeting Android 15+. Fine for local testing.
 - Sentiment is a small word list. A small on-device text model would be better.
 - The store is one JSON file with default values for new fields; there is no
   other migration.
