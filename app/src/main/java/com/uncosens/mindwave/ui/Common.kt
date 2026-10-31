@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -48,6 +49,12 @@ fun Page(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> U
 @Composable
 fun PrimaryButton(text: String, onClick: () -> Unit, enabled: Boolean = true) =
     Button(onClick, Modifier.fillMaxWidth().height(Dimens.buttonHeight), enabled = enabled, shape = CircleShape) {
+        Text(text, style = MaterialTheme.typography.labelLarge)
+    }
+
+@Composable
+fun SecondaryButton(text: String, onClick: () -> Unit) =
+    OutlinedButton(onClick, Modifier.fillMaxWidth().height(Dimens.buttonHeight), shape = CircleShape) {
         Text(text, style = MaterialTheme.typography.labelLarge)
     }
 

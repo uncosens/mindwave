@@ -81,6 +81,12 @@ private fun VoiceStep(
     onNeedPermission: (() -> Unit) -> Unit,
     idleActions: @Composable () -> Unit = {},
 ) = Page {
+    // Words read so far; never goes backwards within a take.
+    val target = remember(text.reading) { text.reading?.let(TextTools::words).orEmpty() }
+    var read by remember(text.reading) { mutableIntStateOf(0) }
+    LaunchedEffect(vm.recording) { if (vm.recording) read = 0 }
+    LaunchedEffect(vm.liveText) { read = maxOf(read, TextTools.readProgress(target, vm.liveText)) }
+
     var elapsed by remember { mutableFloatStateOf(0f) }
     var quiet by remember { mutableStateOf(false) }
     LaunchedEffect(vm.recording) {
@@ -88,17 +94,21 @@ private fun VoiceStep(
         quiet = false
         if (!vm.recording) return@LaunchedEffect
         val start = withFrameNanos { it }
+        var lastVoice = start
+        var silent = 0f
         while (vm.recording) {
-            withFrameNanos { elapsed = (it - start) / 1e9f }
+            withFrameNanos {
+                elapsed = (it - start) / 1e9f
+                if (vm.recorder.orb.speaking) lastVoice = it
+                silent = (it - lastVoice) / 1e9f
+            }
             quiet = vm.recorder.tooQuiet
-            if (elapsed >= maxSeconds) vm.stopRecording()
+            // Reading steps finish by themselves once the whole text has been heard and the voice stops.
+            val doneReading = target.isNotEmpty() &&
+                ((read >= target.size && silent > 0.5f) || (read >= target.size - 1 && silent > 1.2f))
+            if (elapsed >= maxSeconds || doneReading) vm.stopRecording()
         }
     }
-    // Words read so far; never goes backwards within a take.
-    val target = remember(text.reading) { text.reading?.let(TextTools::words).orEmpty() }
-    var read by remember(text.reading) { mutableIntStateOf(0) }
-    LaunchedEffect(vm.recording) { if (vm.recording) read = 0 }
-    LaunchedEffect(vm.liveText) { read = maxOf(read, TextTools.readProgress(target, vm.liveText)) }
     val canFinish = elapsed >= minSeconds
     val toggle = {
         when {
@@ -192,9 +202,10 @@ private fun VoiceStep(
         toggle,
         enabled = !vm.busy && (!vm.recording || canFinish),
     )
-    Box(Modifier.height(48.dp), contentAlignment = Alignment.Center) {
+    // Same height in every state so the primary button does not jump.
+    Box(Modifier.padding(top = Dimens.s).height(Dimens.buttonHeight), contentAlignment = Alignment.Center) {
         when {
-            vm.recording && vm.redoLeft -> TextButton(onClick = vm::redo) { Text("Start over (once)") }
+            vm.recording && vm.redoLeft -> SecondaryButton("Try again", vm::redo)
             !vm.recording && !vm.busy -> idleActions()
         }
     }

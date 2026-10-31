@@ -163,7 +163,8 @@ fun HomeScreen(vm: MainViewModel) = Page {
     Spacer(Modifier.height(Dimens.l))
     if (todays == null) PrimaryButton("Start check-in", vm::startCheckIn) else {
         PrimaryButton("See today's result", { vm.openResult(todays) })
-        TextButton(onClick = vm::startCheckIn) { Text("Redo today's check-in") }
+        Spacer(Modifier.height(Dimens.s))
+        SecondaryButton("Redo today's check-in", vm::startCheckIn)
     }
     Spacer(Modifier.height(Dimens.l))
 }

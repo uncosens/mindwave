@@ -18,6 +18,8 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
@@ -28,7 +30,10 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.ShaderBrush
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
+import kotlinx.coroutines.delay
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import kotlin.math.PI
@@ -56,6 +61,7 @@ object OrbPalettes {
     val DoneNeutral = OrbPalette(Color(0xFF3FB59A), Color(0xFF9BE3C9), Color(0xFFE6F8F0), 0.30f)
     val DoneHigh = OrbPalette(Color(0xFFFF8E5E), Color(0xFFFF7FA0), Color(0xFFFFE0B0), 0.30f)
     val Error = OrbPalette(Color(0xFF9A9AA3), Color(0xFFC4C2D6), Color(0xFFECECEF), 0.15f)
+    val Alarm = OrbPalette(Color(0xFFFF3B3B), Color(0xFFFF6A5C), Color(0xFFFFC2B8), 0.60f) // brief flash on error
 
     /** valence in -1..1 */
     fun done(valence: Float): OrbPalette {
@@ -145,14 +151,28 @@ fun VoiceOrb(
     val reduced = remember {
         Settings.Global.getFloat(context.contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f) == 0f
     }
-    val target = OrbPalettes.of(state, valence)
-    val anim = tween<Color>(300)
+    // On error: flash red with two quick pops ("beep-beep"), then settle to grey.
+    var alarm by remember { mutableStateOf(false) }
+    val haptic = LocalHapticFeedback.current
+    val target = if (alarm) OrbPalettes.Alarm else OrbPalettes.of(state, valence)
+    val anim = tween<Color>(if (alarm) 80 else if (state == OrbState.Error) 600 else 300)
     val c1 = animateColorAsState(target.c1, anim, label = "c1")
     val c2 = animateColorAsState(target.c2, anim, label = "c2")
     val c3 = animateColorAsState(target.c3, anim, label = "c3")
-    val glow = animateFloatAsState(target.glow, tween(300), label = "glow")
+    val glow = animateFloatAsState(target.glow, tween(if (alarm) 80 else 300), label = "glow")
 
     val motion = remember { OrbMotion() }
+    LaunchedEffect(state) {
+        if (state != OrbState.Error) { alarm = false; return@LaunchedEffect }
+        alarm = true
+        haptic.performHapticFeedback(HapticFeedbackType.Reject)
+        repeat(2) {
+            motion.scaleVel += 1.6f
+            delay(170)
+        }
+        delay(350)
+        alarm = false
+    }
     val frame = remember { mutableFloatStateOf(0f) }
     val currentState by rememberUpdatedState(state)
     LaunchedEffect(Unit) {

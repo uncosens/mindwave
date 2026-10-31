@@ -74,6 +74,8 @@ class AnalysisTest {
         assertEquals(12, TextTools.readProgress(target, "we were away all day and we rode along the valley road"))
         // A wrong word far ahead does not jump the highlight.
         assertEquals(0, TextTools.readProgress(target, "road"))
+        // Several misheard words in a row do not stall it.
+        assertEquals(9, TextTools.readProgress(target, "we were xx yy zz qq we rode along"))
     }
 
     @Test fun sentimentDirection() {
@@ -101,7 +103,9 @@ class AnalysisTest {
         assertEquals(Capture.Bad(Reject.NOISY), FeatureExtractor.extract(pcm(noisy), 10, 1f))
         // 2 s of voicing is too little for a 74-syllable anchor.
         val short = FloatArray(4000) + tone(150f, 2f) + FloatArray(4000)
-        assertEquals(Capture.Bad(Reject.TOO_SHORT), FeatureExtractor.extract(pcm(short), 74, 1f))
+        assertEquals(Capture.Bad(Reject.TOO_SHORT), FeatureExtractor.extract(pcm(short), 74, 0.5f))
+        // When the words show the whole text was read, the same take is accepted.
+        assertTrue(FeatureExtractor.extract(pcm(short), 74, 0.9f) is Capture.Ok)
     }
 
     @Test fun wordTimingsDriveRateAndPauses() {

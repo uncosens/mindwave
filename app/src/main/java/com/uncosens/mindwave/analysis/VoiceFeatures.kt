@@ -34,6 +34,8 @@ object FeatureExtractor {
     const val MIN_SNR_DB = 15f
     const val MIN_SPEECH_DB = -45f
     const val VOICED_SEC_PER_SYLLABLE = 0.09f // 74-syllable anchor needs about 6.7 s of voicing
+    private const val MIN_VOICED_SEC = 0.5f
+    private const val FULL_READ = 0.8f // reading accuracy that counts as having read the whole text
     private const val HOP = 320      // 20 ms
     private const val WIN = 640      // 40 ms
     private const val MIN_PAUSE = 13 // frames, about 260 ms
@@ -67,7 +69,11 @@ object FeatureExtractor {
         val speakSec = (spanFrames - pauseFrames) * HOP / Dsp.RATE.toFloat()
 
         val voiced = (first..last).filter { active[it] && pitch[it] > 0f }
-        if (voiced.size * HOP / Dsp.RATE.toFloat() < maxOf(syllables * VOICED_SEC_PER_SYLLABLE, 0.2f)) return Capture.Bad(Reject.TOO_SHORT)
+        // Pitch tracking misses some voiced frames on real phones, so when the words show the whole
+        // text was read, only a small floor of voicing is needed for the pitch statistics.
+        val voicedSec = voiced.size * HOP / Dsp.RATE.toFloat()
+        val needed = if (accuracy >= FULL_READ) MIN_VOICED_SEC else maxOf(syllables * VOICED_SEC_PER_SYLLABLE, MIN_VOICED_SEC)
+        if (voicedSec < needed) return Capture.Bad(Reject.TOO_SHORT)
         val loudness = (first..last).filter { active[it] }.map { Dsp.db(rms[it]) }.average().toFloat()
         if (loudness < MIN_SPEECH_DB) return Capture.Bad(Reject.TOO_QUIET)
         if (loudness - Dsp.db(floor) < MIN_SNR_DB) return Capture.Bad(Reject.NOISY)
@@ -113,16 +119,23 @@ object TextTools {
         maxOf(n, 1)
     }
 
-    // How many words of the target have been read, from a live transcript. Heard words are matched
-    // in order to the next few target words; skipped target words count as read once a later one matches.
+    // How many words of the target have been read, from a live transcript: the target prefix
+    // closest (edit distance) to everything heard, so misheard words do not stall it.
     fun readProgress(target: List<String>, heard: String): Int {
-        var read = 0
-        for (h in words(heard)) {
-            for (j in read until minOf(read + 4, target.size)) {
-                if (target[j] == h) { read = j + 1; break }
+        val h = words(heard)
+        if (h.isEmpty()) return 0
+        // col[i] = distance between target[0, i) and the heard words so far.
+        var col = IntArray(target.size + 1) { it }
+        for (w in h) {
+            val next = IntArray(target.size + 1)
+            next[0] = col[0] + 1
+            for (i in 1..target.size) {
+                next[i] = minOf(col[i - 1] + if (target[i - 1] == w) 0 else 1, col[i] + 1, next[i - 1] + 1)
             }
+            col = next
         }
-        return read
+        // On a tie keep the shorter prefix, so a misheard last word does not count as read.
+        return col.indices.minBy { col[it] }
     }
 
     // 1 - word error rate, clamped to 0..1.
