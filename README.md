@@ -24,7 +24,7 @@ This is not a medical or psychological diagnosis.
 
 ## Build
 
-1. Get the speech model (about 40 MB):
+1. Get the speech models, English and Korean (about 120 MB):
    `powershell -File scripts/fetch-model.ps1`
 2. Build and install:
    `gradlew installDebug`

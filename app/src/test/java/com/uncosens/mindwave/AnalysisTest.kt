@@ -8,6 +8,7 @@ import com.uncosens.mindwave.analysis.PersonalWeights
 import com.uncosens.mindwave.analysis.Reject
 import com.uncosens.mindwave.analysis.Word
 import com.uncosens.mindwave.data.CheckIn
+import com.uncosens.mindwave.data.Sentences
 import com.uncosens.mindwave.analysis.FeatureExtractor
 import com.uncosens.mindwave.analysis.Sentiment
 import com.uncosens.mindwave.analysis.TextTools
@@ -83,6 +84,30 @@ class AnalysisTest {
         assertTrue(Sentiment.score("I am stressed and so tired, it was awful").score < -0.4f)
         assertTrue(Sentiment.score("I am not happy").score < 0f)
         assertEquals(0, Sentiment.score("the bus left at noon").hits)
+    }
+
+    @Test fun koreanText() {
+        assertEquals(106, TextTools.syllables(Sentences.ANCHOR_KO))
+        // Compared by syllable, so different word spacing does not count as an error.
+        assertEquals(1f, TextTools.accuracy("작은 다리가 있습니다.", "작은다리가 있습니다"), 0f)
+        assertEquals(11f / 12f, TextTools.accuracy("우리는 아침 일찍 걸었습니다", "우리는 아침 일직 걸었습니다"), 1e-4f)
+        val target = TextTools.words("“우리는 아침 일찍 마을 앞 냇가를 따라 걸었습니다.”")
+        assertEquals(2, TextTools.readProgress(target, "우리는 아침"))
+        assertEquals(2, TextTools.readProgress(target, "우리는아침 일"))
+        assertEquals(8, TextTools.readProgress(target, "우리는 아침 일찍 마을 앞 냇가를 따라 걸었습니다"))
+    }
+
+    @Test fun koreanSentiment() {
+        assertTrue(Sentiment.score("오늘 정말 즐거웠고 행복했어요").score > 0.4f)
+        assertTrue(Sentiment.score("너무 피곤하고 스트레스 받아서 우울했어").score < -0.4f)
+        assertTrue(Sentiment.score("오늘은 기분이 안 좋아").score < 0f)
+        assertTrue(Sentiment.score("별로 좋지 않았어").score < 0f)
+        assertEquals(0, Sentiment.score("버스가 정오에 떠났다").hits)
+    }
+
+    @Test fun labelInEachLanguage() {
+        assertEquals("Calm, a little low", Analyzer.label(-0.5f, -0.3f, 1f))
+        assertEquals("차분함, 조금 가라앉음", Analyzer.label(-0.5f, -0.3f, 1f, Strings.Ko))
     }
 
     @Test fun extractorMeasuresSpeechAndPause() {

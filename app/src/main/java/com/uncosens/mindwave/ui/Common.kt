@@ -31,15 +31,24 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.uncosens.mindwave.Strings
+import com.uncosens.mindwave.analysis.Analyzer
 import com.uncosens.mindwave.analysis.Metric
 import com.uncosens.mindwave.data.CheckIn
 import kotlin.math.abs
+
+// Text in the app language, provided by MainActivity.
+val LocalStrings = staticCompositionLocalOf<Strings> { Strings.En }
+
+// The summary label in the current language, whatever language it was stored in.
+fun label(c: CheckIn, s: Strings) = Analyzer.label(c.arousal, c.valence, c.stability, s)
 
 @Composable
 fun Page(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
@@ -125,23 +134,25 @@ class ShownMetric(
 
 private fun CheckIn.z(m: Metric) = z[m.name] ?: 0f
 
-val shownMetrics = listOf(
-    ShownMetric("Tone", "Tone", "brighter", "darker", listOf(Metric.ENERGY)) { it.z(Metric.ENERGY) },
-    ShownMetric("Speech rate", "Speech rate", "faster", "slower", listOf(Metric.RATE)) { it.z(Metric.RATE) },
-    ShownMetric("Pitch", "Pitch", "higher", "lower", listOf(Metric.PITCH)) { it.z(Metric.PITCH) },
-    ShownMetric("Pitch variety", "Pitch variety", "more varied", "flatter", listOf(Metric.PITCH_VAR)) { it.z(Metric.PITCH_VAR) },
-    ShownMetric("Pauses & breath", "Pauses", "more pauses", "fewer pauses", listOf(Metric.PAUSES)) { it.z(Metric.PAUSES) },
-    ShownMetric("Voice tremor", "Tremor", "shakier", "steadier", listOf(Metric.JITTER, Metric.SHIMMER)) {
+private fun shown(t: List<String>, metrics: List<Metric>, z: (CheckIn) -> Float) = ShownMetric(t[0], t[1], t[2], t[3], metrics, z)
+
+fun shownMetrics(s: Strings) = listOf(
+    shown(s.tone, listOf(Metric.ENERGY)) { it.z(Metric.ENERGY) },
+    shown(s.rate, listOf(Metric.RATE)) { it.z(Metric.RATE) },
+    shown(s.pitch, listOf(Metric.PITCH)) { it.z(Metric.PITCH) },
+    shown(s.pitchVariety, listOf(Metric.PITCH_VAR)) { it.z(Metric.PITCH_VAR) },
+    shown(s.pauses, listOf(Metric.PAUSES)) { it.z(Metric.PAUSES) },
+    shown(s.tremor, listOf(Metric.JITTER, Metric.SHIMMER)) {
         (it.z(Metric.JITTER) + it.z(Metric.SHIMMER)) / 2
     },
 )
 
 // A metric value with its unit, e.g. "182 Hz".
-fun Metric.format(v: Float): String = when (this) {
+fun Metric.format(v: Float, s: Strings): String = when (this) {
     Metric.PITCH -> "%.0f Hz".format(v)
     Metric.PITCH_VAR -> "%.1f st".format(v)
     Metric.ENERGY -> "%.1f dB".format(v).replace('-', '−')
-    Metric.RATE -> "%.1f syl/s".format(v)
+    Metric.RATE -> "%.1f ${s.syllablesPerSec}".format(v)
     Metric.PAUSES -> "%.0f %%".format(v * 100)
     Metric.JITTER -> "%.2f %%".format(v)
     Metric.SHIMMER -> "%.1f %%".format(v)
@@ -168,10 +179,10 @@ fun Sparkline(values: List<Float>, modifier: Modifier = Modifier) {
     }
 }
 
-fun ShownMetric.phrase(z: Float): String = when {
-    abs(z) < 0.5f -> "As usual"
-    abs(z) <= 1.5f -> "A bit ${if (z > 0) up else down}"
-    else -> "Much ${if (z > 0) up else down}"
+fun ShownMetric.phrase(z: Float, s: Strings): String = when {
+    abs(z) < 0.5f -> s.asUsual
+    abs(z) <= 1.5f -> s.aBit(if (z > 0) up else down)
+    else -> s.much(if (z > 0) up else down)
 }
 
 // Track from -2σ to +2σ with the ±1σ band and a dot at z.

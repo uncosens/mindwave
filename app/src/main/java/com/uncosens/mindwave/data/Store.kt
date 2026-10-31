@@ -28,8 +28,12 @@ data class CheckIn(
     val baselineSize: Int = 0, // anchor readings the day was compared against
 )
 
+// App language. Each has its own speech model, texts and baseline.
+enum class Lang(val modelDir: String) { EN("model-en-us"), KO("model-ko") }
+
 @Serializable
 data class AppData(
+    val language: Lang? = null, // null until picked on first launch
     val calibration: List<VoiceFeatures> = emptyList(),
     val calibrationAnchor: String = "", // anchor text used for calibration
     val calibrationDevice: String = "",

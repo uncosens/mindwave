@@ -20,6 +20,7 @@ import com.uncosens.mindwave.audio.Dsp
 import com.uncosens.mindwave.audio.Recorder
 import com.uncosens.mindwave.data.AppData
 import com.uncosens.mindwave.data.CheckIn
+import com.uncosens.mindwave.data.Lang
 import com.uncosens.mindwave.data.Passages
 import com.uncosens.mindwave.data.Sentences
 import com.uncosens.mindwave.data.Store
@@ -33,6 +34,7 @@ import java.time.LocalDate
 sealed interface Screen {
     data object Loading : Screen
     data class Error(val text: String) : Screen
+    data object Language : Screen
     data object Welcome : Screen
     data object Permission : Screen
     data object CalibrationIntro : Screen
@@ -61,6 +63,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val store = Store(app)
     val recorder = Recorder(app)
     private var transcriber: Transcriber? = null
+    private var transcriberLang: Lang? = null
 
     var data by mutableStateOf(AppData()); private set
     var screen by mutableStateOf<Screen>(Screen.Loading); private set
@@ -73,8 +76,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     var passage by mutableStateOf<String?>(null); private set // set when reading instead of talking
     private var live: Transcriber.Live? = null
 
-    val dailySentence = Sentences.forDay()
-    val freeTalkPrompt = Sentences.promptForDay()
+    // Older data without a language was English.
+    val lang get() = data.language ?: Lang.EN
+    val strings get() = Strings.of(lang)
+    val anchorText get() = Sentences.anchor(lang)
+    val dailySentence get() = Sentences.forDay(lang)
+    val freeTalkPrompt get() = Sentences.promptForDay(lang)
     private val calibration = mutableListOf<VoiceFeatures>()
     private var anchor: VoiceFeatures? = null
     private var daily: VoiceFeatures? = null
@@ -82,7 +89,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private var transcriptRaw = ""
 
     // Calibration only counts if it was done with the current anchor text and feature version.
-    private val calibrated get() = data.calibration.isNotEmpty() && data.calibrationAnchor == Sentences.ANCHOR &&
+    private val calibrated get() = data.calibration.isNotEmpty() && data.calibrationAnchor == anchorText &&
         data.calibration.all { it.version == FeatureExtractor.VERSION }
 
     private val device = Build.MODEL
@@ -94,7 +101,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     // Days before `date` that can join the baseline and the personal weights.
     private fun comparable(c: CheckIn, date: String) =
-        c.date < date && c.anchorText == Sentences.ANCHOR && c.anchor.version == FeatureExtractor.VERSION &&
+        c.date < date && c.anchorText == anchorText && c.anchor.version == FeatureExtractor.VERSION &&
             c.device == device && c.source == source
 
     // The anchor baseline as it was on that day, for showing usual values.
@@ -107,17 +114,37 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     init {
         viewModelScope.launch {
+            val loaded = withContext(Dispatchers.IO) { store.load() }
+            val old = loaded.calibration.isNotEmpty() || loaded.checkIns.isNotEmpty()
+            data = if (loaded.language == null && old) loaded.copy(language = Lang.EN) else loaded
+            if (data.language == null) screen = Screen.Language else loadModel()
+        }
+    }
+
+    // First launch, or after deleting all data.
+    fun chooseLanguage(l: Lang) {
+        data = data.copy(language = l)
+        persist()
+        loadModel()
+    }
+
+    // Loads the speech model for the app language, then opens the right first screen.
+    private fun loadModel() {
+        screen = Screen.Loading
+        viewModelScope.launch {
             try {
-                val (loaded, t) = withContext(Dispatchers.IO) { store.load() to Transcriber.load(app) }
-                data = loaded
-                transcriber = t
+                if (transcriberLang != lang) {
+                    transcriber?.close()
+                    transcriber = withContext(Dispatchers.IO) { Transcriber.load(getApplication(), lang) }
+                    transcriberLang = lang
+                }
                 screen = when {
                     calibrated -> Screen.Home
-                    loaded.calibration.isEmpty() -> Screen.Welcome
+                    data.calibration.isEmpty() -> Screen.Welcome
                     else -> Screen.CalibrationIntro // anchor text or feature version changed
                 }
             } catch (e: Exception) {
-                screen = Screen.Error("Speech model not found. Run scripts/fetch-model.ps1 and rebuild.\n\n${e.message}")
+                screen = Screen.Error("${strings.modelMissing}\n\n${e.message}")
             }
         }
     }
@@ -139,7 +166,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun deleteAll() {
         store.clear()
         data = AppData()
-        go(Screen.Welcome)
+        go(Screen.Language)
     }
 
     fun startRecording() {
@@ -161,7 +188,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         liveText = ""
     }
 
-    fun choosePassage() { passage = Passages.random(passage); problem = null }
+    fun choosePassage() { passage = Passages.random(lang, passage); problem = null }
     fun talkInstead() { passage = null; problem = null }
 
     private fun discardRecording() {
@@ -191,29 +218,29 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             val heard = result.text
             if (talk) liveText = heard
             when (step) {
-                is Screen.Calibrate -> measure(pcm, Sentences.ANCHOR, result)?.let { f ->
+                is Screen.Calibrate -> measure(pcm, anchorText, result)?.let { f ->
                     calibration += f
                     if (step.round < 3) go(Screen.Calibrate(step.round + 1)) else {
                         data = data.copy(
-                            calibration = calibration.toList(), calibrationAnchor = Sentences.ANCHOR,
+                            calibration = calibration.toList(), calibrationAnchor = anchorText,
                             calibrationDevice = device, calibrationSource = source,
                         )
                         persist()
                         go(Screen.Ready)
                     }
                 }
-                Screen.ReadAnchor -> measure(pcm, Sentences.ANCHOR, result)?.let { anchor = it; go(Screen.ReadDaily) }
+                Screen.ReadAnchor -> measure(pcm, anchorText, result)?.let { anchor = it; go(Screen.ReadDaily) }
                 Screen.ReadDaily -> measure(pcm, dailySentence, result)?.let { daily = it; go(Screen.FreeTalk) }
                 Screen.FreeTalk -> if (passage != null) {
                     if (TextTools.accuracy(passage!!, heard) < 0.3f) {
-                        problem = Problem("That was a bit short.", "Please read the whole passage.")
+                        problem = Problem(strings.shortTitle, strings.readWholePassage)
                     } else {
                         transcript = heard
                         transcriptRaw = heard
                         go(Screen.Mood)
                     }
                 } else if (pcm.size < Dsp.RATE * 8 || TextTools.words(heard).size < 5) {
-                    problem = Problem("Talk a little longer.", "Anything works — what you ate, what you saw.")
+                    problem = Problem(strings.talkLongerTitle, strings.talkLongerBody)
                 } else {
                     transcript = heard
                     transcriptRaw = heard
@@ -250,7 +277,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             val checkIn = CheckIn(
                 date = today, anchor = a, daily = d, transcript = transcript, textSentiment = text.score, mood = mood,
                 z = r.z.mapKeys { it.key.name }, arousal = r.arousal, valence = r.valence, stability = r.stability,
-                label = Analyzer.label(r.arousal, r.valence, r.stability), anchorText = Sentences.ANCHOR, readPassage = read,
+                label = Analyzer.label(r.arousal, r.valence, r.stability, strings), anchorText = anchorText, readPassage = read,
                 energy = energy, transcriptRaw = transcriptRaw, device = device, source = source, baselineSize = anchorBase.size,
             )
             data = data.copy(checkIns = data.checkIns.filter { it.date != today } + checkIn)
@@ -264,7 +291,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         // Accuracy only checks that the right text was read; it is not part of the analysis.
         val accuracy = TextTools.accuracy(sentence, heard.text)
         if (accuracy < 0.3f) {
-            problem = Problem("That didn't match the text.", "Please read the whole sentence as written.")
+            problem = Problem(strings.mismatchTitle, strings.mismatchBody)
             return null
         }
         val c = withContext(Dispatchers.Default) {
@@ -273,11 +300,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         return when (c) {
             is Capture.Ok -> c.features
             is Capture.Bad -> {
+                val s = strings
                 problem = when (c.reason) {
-                    Reject.TOO_QUIET -> Problem("That was too quiet to analyze.", "Hold the phone about 20 cm from your mouth.")
-                    Reject.NOISY -> Problem("It's noisy around you.", "Find a quieter spot and try again.")
-                    Reject.TOO_SHORT -> Problem("That was a bit short.", "Please read the whole sentence.")
-                    Reject.CLIPPED -> Problem("That was too loud.", "Hold the phone a little farther away and read again.")
+                    Reject.TOO_QUIET -> Problem(s.quietTitle, s.quietBody)
+                    Reject.NOISY -> Problem(s.noisyTitle, s.noisyBody)
+                    Reject.TOO_SHORT -> Problem(s.shortTitle, s.readWholeSentence)
+                    Reject.CLIPPED -> Problem(s.loudTitle, s.loudBody)
                 }
                 null
             }

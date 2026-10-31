@@ -1,23 +1,23 @@
 package com.uncosens.mindwave.analysis
 
+import com.uncosens.mindwave.Strings
 import kotlin.math.abs
 import kotlin.math.tanh
 
 enum class Metric(
-    val label: String,
     val get: (VoiceFeatures) -> Float?, // null when the take had too little to measure
     val minSpread: (Float) -> Float,
     // Holds up when the sentence changes, so the daily sentence can use the anchor baseline.
     val textRobust: Boolean,
 ) {
-    PITCH("Pitch", { it.pitchMean }, { it * 0.04f }, true),
-    PITCH_VAR("Pitch variation", { it.pitchVar }, { 0.3f }, true),
-    ENERGY("Tone energy", { it.loudness }, { 1.5f }, true),
-    RATE("Speech rate", { it.rate }, { 0.25f }, false),
-    PAUSES("Breathing pauses", { it.pauseRatio }, { 0.03f }, false),
+    PITCH({ it.pitchMean }, { it * 0.04f }, true),
+    PITCH_VAR({ it.pitchVar }, { 0.3f }, true),
+    ENERGY({ it.loudness }, { 1.5f }, true),
+    RATE({ it.rate }, { 0.25f }, false),
+    PAUSES({ it.pauseRatio }, { 0.03f }, false),
     // Typical voices: jitter 0.2-1 %, shimmer 2-6 %.
-    JITTER("Pitch tremor", { it.jitter }, { it * 0.2f + 0.05f }, true),
-    SHIMMER("Volume tremor", { it.shimmer }, { it * 0.2f + 0.3f }, true),
+    JITTER({ it.jitter }, { it * 0.2f + 0.05f }, true),
+    SHIMMER({ it.shimmer }, { it * 0.2f + 0.3f }, true),
 }
 
 class Baseline(samples: List<VoiceFeatures>) {
@@ -75,21 +75,21 @@ object Analyzer {
         return Assessment(z, arousal, valence, stability)
     }
 
-    // Summary such as "Calm, a little low" (design/DESIGN.md 4.8).
-    fun label(arousal: Float, valence: Float, stability: Float): String {
+    // Summary such as "Calm, a little low" (design/DESIGN.md 4.8), in the app language.
+    fun label(arousal: Float, valence: Float, stability: Float, s: Strings = Strings.En): String {
         val energy = when {
-            arousal < -0.33f -> "Calm"
-            arousal > 0.33f -> "Energized"
-            else -> "Balanced"
+            arousal < -0.33f -> 0
+            arousal > 0.33f -> 2
+            else -> 1
         }
         val mood = when {
-            valence < -0.5f -> "low"
-            valence < -0.15f -> "a little low"
-            valence <= 0.15f -> "steady"
-            valence <= 0.5f -> "a little bright"
-            else -> "bright"
+            valence < -0.5f -> 0
+            valence < -0.15f -> 1
+            valence <= 0.15f -> 2
+            valence <= 0.5f -> 3
+            else -> 4
         }
-        return "$energy, $mood" + if (stability < 0.4f) ", less steady than usual" else ""
+        return s.label(s.energyLevels[energy], s.moodLevels[mood], stability < 0.4f)
     }
 
     private fun pos(x: Float) = maxOf(x, 0f)

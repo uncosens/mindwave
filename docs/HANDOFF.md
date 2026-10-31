@@ -15,7 +15,8 @@ Background:
 
 ## Product rules from the user
 
-- App language is English. Replies to the user are in Korean.
+- The app supports English and Korean. The user picks one on first launch (shown again after
+  "Delete all data"). Replies to the user are in Korean.
 - Do not show "how it works" text in the app (no algorithm, baseline or research
   explanations). Keep only instructions, errors, confirmations and the
   "mindwave is not a medical tool." line. A short status such as
@@ -28,7 +29,7 @@ Background:
 
 ## Flow
 
-1. First run: Welcome -> mic pre-prompt (only if not yet granted) -> calibration:
+1. First run: language picker -> Welcome -> mic pre-prompt (only if not yet granted) -> calibration:
    read the anchor 3 times.
 2. Check-in: anchor (`Sentences.ANCHOR`, 62 words) -> sentence of the day ->
    free talk with live transcript (or read a random passage instead) -> review and
@@ -46,6 +47,7 @@ compared, and Home suggests recalibrating when they differ from the calibration.
 | Path | What |
 |---|---|
 | `app/.../MainViewModel.kt` | Screen state machine, recording, check-in flow |
+| `app/.../Strings.kt` | All UI text, `Strings.En` and `Strings.Ko`; screens read it from `LocalStrings` |
 | `app/.../MainActivity.kt` | Screen routing, mic permission |
 | `audio/Recorder.kt`, `audio/Dsp.kt` | 16 kHz capture (UNPROCESSED source if supported), RMS, YIN pitch |
 | `speech/Transcriber.kt` | Vosk offline STT, word timestamps, live streaming for free talk |
@@ -88,12 +90,28 @@ the orb's reaction to a real voice have never been seen working.
 
 1. JDK 21+ (on the original machine: `C:\Users\junan\AndroidDev\jdk`) and the Android
    SDK with platform 37. Put `sdk.dir=...` in `local.properties`.
-2. Fetch the speech model (about 40 MB, not in git):
+2. Fetch the speech models (English about 40 MB, Korean about 82 MB zipped; not in git):
    `powershell -File scripts/fetch-model.ps1`
 3. `gradlew testDebugUnitTest assembleDebug`
 4. `gradlew installDebug` with a device connected.
 
+## Languages (English and Korean)
+
+- `AppData.language` (`Lang.EN` / `Lang.KO`) is null until picked. Older data with no language
+  reads as English. Each language has its own Vosk model folder (`Lang.modelDir`), anchor
+  (`Sentences.ANCHOR_EN` 74 syllables, `ANCHOR_KO` 106 syllables, both about 17-19 s), daily
+  sentences, free-talk prompts and passages.
+- Baselines never mix languages: calibration and check-ins are matched by anchor text.
+- `TextTools` works on both: one Hangul block is one syllable; Korean accuracy and read progress
+  compare syllables, so word spacing differences from the recognizer do not count as errors.
+- `Sentiment` uses a Korean stem list (start-of-word match) with "안/못" and "-지 않" negation.
+- `CheckIn.label` is stored in the language of that day; screens recompute it with `label(c, s)`.
+
 ## Open tasks, in priority order
+
+0. **Try Korean on a phone.** Built and unit-tested only. Check the language picker, Korean model
+   load time, read progress and the auto-stop with real Vosk Korean output, and whether the
+   quality gate needs a Korean value for `VOICED_SEC_PER_SYLLABLE` (Korean syllables are shorter).
 
 1. **End-to-end test on a phone.** Do calibration and a few check-ins. Tune:
    `FeatureExtractor.MIN_SNR_DB` (15 dB), `MIN_SPEECH_DB` (-45 dB),
@@ -176,5 +194,8 @@ and 5-10 % higher with noise.
 - Passage mode on small phones: the passage and orb share one screen and may feel
   cramped (the transcript is gone from passage mode, which helps).
 - Sentiment is a small word list. A small on-device text model would be better.
+- The Korean Vosk model unpacks to about 250 MB (mostly `graph/HCLr.fst`) and is copied to app
+  storage on first use. The debug APK is about 205 MB with both models. Check load time and memory
+  on low-end phones; a per-language download would break the fully offline install.
 - The store is one JSON file with default values for new fields; there is no
   other migration.

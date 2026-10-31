@@ -118,21 +118,35 @@ object FeatureExtractor {
 
 object TextTools {
     fun words(text: String): List<String> =
-        text.lowercase().replace(Regex("[^a-z' ]"), " ").split(' ').filter { it.isNotBlank() }
+        text.lowercase().replace(Regex("[^\\p{L}\\p{N}' ]"), " ").split(' ').filter { it.isNotBlank() }
 
-    // Rough English syllable count: vowel groups, minus a silent final "e".
+    private fun hangul(c: Char) = c in '가'..'힣'
+
+    // Korean: one Hangul block is one syllable. English: vowel groups, minus a silent final "e".
     fun syllables(text: String): Int = words(text).sumOf { w ->
+        val h = w.count(::hangul)
+        if (h > 0) return@sumOf h
         var n = Regex("[aeiouy]+").findAll(w).count()
         if (w.length > 2 && w.endsWith("e") && !w.endsWith("le") && n > 1) n--
         maxOf(n, 1)
     }
 
+    // Units for comparing texts: syllables for Korean, since word spacing varies; words otherwise.
+    private fun units(text: String): List<String> =
+        if (text.any(::hangul)) words(text).flatMap { w -> w.map { it.toString() } } else words(text)
+
     // How many words of the target have been read, from a live transcript: the target prefix
     // closest (edit distance) to everything heard, so misheard words do not stall it.
     fun readProgress(target: List<String>, heard: String): Int {
-        val h = words(heard)
+        if (target.none { w -> w.any(::hangul) }) return prefix(target, words(heard))
+        // Korean: align by syllable, then count the words fully covered.
+        val read = prefix(target.flatMap { w -> w.map { it.toString() } }, units(heard))
+        return target.runningFold(0) { n, w -> n + w.length }.drop(1).count { it <= read }
+    }
+
+    private fun prefix(target: List<String>, h: List<String>): Int {
         if (h.isEmpty()) return 0
-        // col[i] = distance between target[0, i) and the heard words so far.
+        // col[i] = distance between target[0, i) and the heard units so far.
         var col = IntArray(target.size + 1) { it }
         for (w in h) {
             val next = IntArray(target.size + 1)
@@ -146,9 +160,9 @@ object TextTools {
         return col.indices.minBy { col[it] }
     }
 
-    // 1 - word error rate, clamped to 0..1.
+    // 1 - error rate (words, or syllables for Korean), clamped to 0..1.
     fun accuracy(reference: String, heard: String): Float {
-        val r = words(reference); val h = words(heard)
+        val r = units(reference); val h = units(heard)
         if (r.isEmpty()) return 0f
         var prev = IntArray(h.size + 1) { it }
         for (i in 1..r.size) {

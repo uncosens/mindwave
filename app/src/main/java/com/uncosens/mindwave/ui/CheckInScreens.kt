@@ -57,7 +57,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import com.uncosens.mindwave.MainViewModel
 import com.uncosens.mindwave.Screen
 import com.uncosens.mindwave.analysis.TextTools
-import com.uncosens.mindwave.data.Sentences
 
 private val StepOrb = 200.dp
 
@@ -75,14 +74,15 @@ private fun VoiceStep(
     onClose: () -> Unit,
     text: StepText,
     transcript: String? = null,
-    idleHint: String = "Tap the orb and read aloud",
-    startLabel: String = "Start reading",
+    idleHint: String,
+    startLabel: String,
     minSeconds: Int = 0,
     maxSeconds: Int = 12,
     ring: Boolean = false,
     onNeedPermission: (() -> Unit) -> Unit,
     idleActions: @Composable () -> Unit = {},
 ) = Page {
+    val s = LocalStrings.current
     // Words read so far; never goes backwards within a take.
     val target = remember(text.reading) { text.reading?.let(TextTools::words).orEmpty() }
     var read by remember(text.reading) { mutableIntStateOf(0) }
@@ -185,20 +185,20 @@ private fun VoiceStep(
     } else {
         Muted(
             when {
-                vm.busy -> "One moment…"
+                vm.busy -> s.oneMoment
                 !vm.recording -> idleHint
-                quiet -> "I can barely hear you — move a little closer"
-                !ring -> "Listening…"
-                canFinish -> "Tap Done anytime"
-                else -> "Keep going…"
+                quiet -> s.tooQuietLive
+                !ring -> s.listening
+                canFinish -> s.tapDoneAnytime
+                else -> s.keepGoing
             },
         )
     }
     Spacer(Modifier.height(Dimens.m))
     PrimaryButton(
         when {
-            vm.recording -> "Done"
-            p != null -> "Try again"
+            vm.recording -> s.done
+            p != null -> s.tryAgain
             else -> startLabel
         },
         toggle,
@@ -207,7 +207,7 @@ private fun VoiceStep(
     // Same height in every state so the primary button does not jump.
     Box(Modifier.padding(top = Dimens.s).height(Dimens.buttonHeight), contentAlignment = Alignment.Center) {
         when {
-            vm.recording && vm.redoLeft -> SecondaryButton("Try again", vm::redo)
+            vm.recording && vm.redoLeft -> SecondaryButton(s.tryAgain, vm::redo)
             !vm.recording && !vm.busy -> idleActions()
         }
     }
@@ -218,12 +218,13 @@ private fun VoiceStep(
 
 @Composable
 private fun StopDialog(vm: MainViewModel) {
+    val s = LocalStrings.current
     if (vm.confirmStop) AlertDialog(
         onDismissRequest = { vm.confirmStop = false },
-        title = { Text("Stop check-in?") },
-        text = { Text("Nothing from today will be saved.") },
-        confirmButton = { TextButton(onClick = { vm.confirmStop = false }) { Text("Keep going") } },
-        dismissButton = { TextButton(onClick = vm::goHome) { Text("Stop") } },
+        title = { Text(s.stopTitle) },
+        text = { Text(s.stopBody) },
+        confirmButton = { TextButton(onClick = { vm.confirmStop = false }) { Text(s.keepGoingButton) } },
+        dismissButton = { TextButton(onClick = vm::goHome) { Text(s.stop) } },
     )
 }
 
@@ -233,20 +234,21 @@ private fun reading(label: String, text: String) = StepText(label, "“$text”"
 // orb keeps its state across steps; a call per branch would recreate it.
 @Composable
 fun VoiceStepScreen(vm: MainViewModel, screen: Screen, onNeedPermission: (() -> Unit) -> Unit) {
+    val s = LocalStrings.current
     val passage = vm.passage
     val talk = screen == Screen.FreeTalk && passage == null
     val text = when {
-        screen is Screen.Calibrate -> reading("Setup", Sentences.ANCHOR)
-        screen == Screen.ReadAnchor -> reading("Warm up", Sentences.ANCHOR)
-        screen == Screen.ReadDaily -> reading("Sentence of the day", vm.dailySentence)
-        talk -> StepText("Talk freely", vm.freeTalkPrompt, "Anything is fine. 10–20 s.", null, small = false)
-        else -> StepText("Read aloud", passage!!, null, passage, small = true)
+        screen is Screen.Calibrate -> reading(s.stepSetup, vm.anchorText)
+        screen == Screen.ReadAnchor -> reading(s.stepWarmUp, vm.anchorText)
+        screen == Screen.ReadDaily -> reading(s.stepDaily, vm.dailySentence)
+        talk -> StepText(s.stepTalk, vm.freeTalkPrompt, s.talkSub, null, small = false)
+        else -> StepText(s.stepReadAloud, passage!!, null, passage, small = true)
     }
     VoiceStep(
         vm,
         top = {
             when (screen) {
-                is Screen.Calibrate -> Text("${screen.round} of 3", style = MaterialTheme.typography.labelLarge)
+                is Screen.Calibrate -> Text(s.roundOf(screen.round), style = MaterialTheme.typography.labelLarge)
                 Screen.ReadAnchor -> StepDots(1)
                 Screen.ReadDaily -> StepDots(2)
                 else -> StepDots(3)
@@ -256,8 +258,8 @@ fun VoiceStepScreen(vm: MainViewModel, screen: Screen, onNeedPermission: (() -> 
         text = text,
         // Reading steps show progress through the highlight, so only free talk shows a transcript.
         transcript = if (talk) vm.liveText else null,
-        idleHint = if (talk) "Tap the orb and start talking" else "Tap the orb and read aloud",
-        startLabel = if (talk) "Start talking" else "Start reading",
+        idleHint = if (talk) s.tapAndTalk else s.tapAndRead,
+        startLabel = if (talk) s.startTalking else s.startReading,
         minSeconds = if (talk) 10 else 0,
         maxSeconds = if (talk) 20 else readLimit(text.reading!!),
         ring = talk,
@@ -265,10 +267,10 @@ fun VoiceStepScreen(vm: MainViewModel, screen: Screen, onNeedPermission: (() -> 
     ) {
         when {
             screen != Screen.FreeTalk -> Unit
-            talk -> TextButton(onClick = vm::choosePassage) { Text("Rather not talk? Read a passage") }
+            talk -> TextButton(onClick = vm::choosePassage) { Text(s.readPassageInstead) }
             else -> Row {
-                TextButton(onClick = vm::choosePassage) { Text("Another passage") }
-                TextButton(onClick = vm::talkInstead) { Text("Talk instead") }
+                TextButton(onClick = vm::choosePassage) { Text(s.anotherPassage) }
+                TextButton(onClick = vm::talkInstead) { Text(s.talkInstead) }
             }
         }
     }
@@ -303,11 +305,11 @@ fun MoodScreen(vm: MainViewModel) = Page {
     var energy by remember { mutableIntStateOf(0) }
     TopBar("✕", { vm.confirmStop = true }) { StepDots(4) }
     Spacer(Modifier.weight(1f))
-    RatingRow("How do you feel right now?", listOf("Very low", "Low", "Okay", "Good", "Great"), mood) { mood = it }
+    RatingRow(LocalStrings.current.moodQuestion, LocalStrings.current.moodLabels, mood) { mood = it }
     Spacer(Modifier.height(Dimens.xxl))
-    RatingRow("How much energy do you have?", listOf("Drained", "Low", "Okay", "High", "Full of energy"), energy) { energy = it }
+    RatingRow(LocalStrings.current.energyQuestion, LocalStrings.current.energyLabels, energy) { energy = it }
     Spacer(Modifier.weight(1f))
-    PrimaryButton("See result", { vm.finish(mood, energy) }, enabled = mood > 0 && energy > 0)
+    PrimaryButton(LocalStrings.current.seeResult, { vm.finish(mood, energy) }, enabled = mood > 0 && energy > 0)
     Spacer(Modifier.height(Dimens.l))
 
     StopDialog(vm)
@@ -353,14 +355,14 @@ fun ReviewScreen(vm: MainViewModel) = Page {
     var text by remember { mutableStateOf(vm.transcript) }
     TopBar("✕", { vm.confirmStop = true }) { StepDots(3) }
     Spacer(Modifier.height(Dimens.l))
-    Text("Is this what you said?", style = MaterialTheme.typography.headlineMedium, textAlign = TextAlign.Center)
+    Text(LocalStrings.current.reviewTitle, style = MaterialTheme.typography.headlineMedium, textAlign = TextAlign.Center)
     Spacer(Modifier.height(Dimens.l))
     OutlinedTextField(
         text, { text = it }, Modifier.fillMaxWidth().weight(1f, fill = false).heightIn(min = 160.dp),
         textStyle = MaterialTheme.typography.bodyLarge, shape = MaterialTheme.shapes.medium,
     )
     Spacer(Modifier.weight(1f))
-    PrimaryButton("Looks right", { vm.confirmTranscript(text) }, enabled = text.isNotBlank())
+    PrimaryButton(LocalStrings.current.looksRight, { vm.confirmTranscript(text) }, enabled = text.isNotBlank())
     Spacer(Modifier.height(Dimens.l))
 
     StopDialog(vm)
@@ -370,6 +372,6 @@ fun ReviewScreen(vm: MainViewModel) = Page {
 fun AnalyzingScreen(vm: MainViewModel) = Page {
     Spacer(Modifier.weight(1f))
     VoiceOrb(vm.recorder.orb, OrbState.Analyzing, size = 240.dp)
-    Text("Listening back…", style = MaterialTheme.typography.bodyLarge)
+    Text(LocalStrings.current.listeningBack, style = MaterialTheme.typography.bodyLarge)
     Spacer(Modifier.weight(1f))
 }

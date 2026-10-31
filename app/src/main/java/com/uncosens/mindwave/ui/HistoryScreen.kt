@@ -40,6 +40,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.uncosens.mindwave.MainViewModel
+import com.uncosens.mindwave.Strings
 import com.uncosens.mindwave.data.CheckIn
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
@@ -48,66 +49,66 @@ import kotlin.math.roundToInt
 
 private class Line(val values: List<Float>, val color: Color)
 
-private val fmt = DateTimeFormatter.ofPattern("MMM d")
-
-private fun date(c: CheckIn) = LocalDate.parse(c.date).format(fmt)
+private fun date(c: CheckIn, s: Strings) = LocalDate.parse(c.date).format(DateTimeFormatter.ofPattern(s.shortPattern, s.locale))
 
 @Composable
 fun HistoryScreen(vm: MainViewModel) = Page {
+    val s = LocalStrings.current
     var range by remember { mutableIntStateOf(1) } // 0: 7 days, 1: 30 days, 2: all
     var metric by remember { mutableIntStateOf(0) }
     val colors = LocalMindwaveColors.current
     val from = when (range) { 0 -> LocalDate.now().minusDays(6); 1 -> LocalDate.now().minusDays(29); else -> LocalDate.MIN }
     val shown = vm.data.checkIns.filter { !LocalDate.parse(it.date).isBefore(from) }
 
-    TopBar("←", vm::goHome) { Text("History", style = MaterialTheme.typography.titleLarge) }
+    TopBar("←", vm::goHome) { Text(s.history, style = MaterialTheme.typography.titleLarge) }
     if (vm.data.checkIns.isEmpty()) {
         Spacer(Modifier.weight(1f))
         VoiceOrb(vm.recorder.orb, OrbState.Idle, size = Dimens.orbSizeSmall)
-        Muted("No check-ins yet.")
+        Muted(s.noCheckIns)
         Spacer(Modifier.weight(1f))
-        PrimaryButton("Check in now", vm::startCheckIn)
+        PrimaryButton(s.checkInNow, vm::startCheckIn)
         Spacer(Modifier.height(Dimens.l))
         return@Page
     }
     Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
         Row(horizontalArrangement = Arrangement.spacedBy(Dimens.xs)) {
-            listOf("7 days", "30 days", "All").forEachIndexed { i, s -> FilterChip(range == i, { range = i }, { Text(s) }) }
+            s.ranges.forEachIndexed { i, s -> FilterChip(range == i, { range = i }, { Text(s) }) }
         }
         Spacer(Modifier.height(Dimens.s))
         val days = shown.map { LocalDate.parse(it.date).toEpochDay() }
         val open = { i: Int -> vm.openResult(shown[i]) }
         Card {
-            Text("Mood & energy", style = MaterialTheme.typography.titleMedium)
+            Text(s.moodAndEnergy, style = MaterialTheme.typography.titleMedium)
             Row(Modifier.padding(vertical = Dimens.xs), horizontalArrangement = Arrangement.spacedBy(Dimens.m)) {
-                Legend("Mood", colors.valence)
-                Legend("Energy", colors.arousal)
+                Legend(s.mood, colors.valence)
+                Legend(s.energy, colors.arousal)
             }
             Chart(
                 days, listOf(Line(shown.map { it.valence }, colors.valence), Line(shown.map { it.arousal }, colors.arousal)), -1f, 1f, null,
-                tip = { "${date(shown[it])} · Mood ${signed(shown[it].valence)} · Energy ${signed(shown[it].arousal)}" }, onOpen = open,
+                tip = { "${date(shown[it], s)} · ${s.mood} ${signed(shown[it].valence)} · ${s.energy} ${signed(shown[it].arousal)}" }, onOpen = open,
             )
             DateAxis(shown)
         }
         Spacer(Modifier.height(Dimens.m))
         Card {
-            val chips = shownMetrics.map { it.chip } + listOf("Stability", "Self rating")
+            val metrics = shownMetrics(s)
+            val chips = metrics.map { it.chip } + listOf(s.stability, s.selfRating)
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(Dimens.xs)) {
                 chips.forEachIndexed { i, s -> FilterChip(metric == i, { metric = i }, { Text(s) }) }
             }
             Spacer(Modifier.height(Dimens.xs))
             when (val i = metric) {
-                in shownMetrics.indices -> Chart(
-                    days, listOf(Line(shown.map(shownMetrics[i].z), colors.metric)), -2.5f, 2.5f, -1f..1f,
-                    tip = { "${date(shown[it])} · ${shownMetrics[i].chip} ${signed(shownMetrics[i].z(shown[it]))}" }, onOpen = open,
+                in metrics.indices -> Chart(
+                    days, listOf(Line(shown.map(metrics[i].z), colors.metric)), -2.5f, 2.5f, -1f..1f,
+                    tip = { "${date(shown[it], s)} · ${metrics[i].chip} ${signed(metrics[i].z(shown[it]))}" }, onOpen = open,
                 )
-                shownMetrics.size -> Chart(
+                metrics.size -> Chart(
                     days, listOf(Line(shown.map { it.stability }, colors.stability)), 0f, 1f, null,
-                    tip = { "${date(shown[it])} · Stability ${"%.2f".format(shown[it].stability)}" }, onOpen = open,
+                    tip = { "${date(shown[it], s)} · ${s.stability} ${"%.2f".format(shown[it].stability)}" }, onOpen = open,
                 )
                 else -> Chart(
                     days, listOf(Line(shown.map { it.mood.toFloat() }, colors.metric)), 1f, 5f, null,
-                    tip = { "${date(shown[it])} · You said ${shown[it].mood}" }, onOpen = open,
+                    tip = { "${date(shown[it], s)} · ${s.saidN(shown[it].mood)}" }, onOpen = open,
                 )
             }
             DateAxis(shown)
@@ -118,8 +119,8 @@ fun HistoryScreen(vm: MainViewModel) = Page {
                 Modifier.fillMaxWidth().height(56.dp).clickable { vm.openResult(c) },
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(LocalDate.parse(c.date).format(fmt), Modifier.width(72.dp), style = MaterialTheme.typography.titleMedium)
-                Muted(c.label, Modifier.weight(1f), align = TextAlign.Start)
+                Text(date(c, s), Modifier.width(72.dp), style = MaterialTheme.typography.titleMedium)
+                Muted(label(c, s), Modifier.weight(1f), align = TextAlign.Start)
                 Box(Modifier.size(10.dp).clip(CircleShape).background(OrbPalettes.done(c.valence).c1))
             }
         }
@@ -138,8 +139,8 @@ private fun Legend(label: String, color: Color) = Row(verticalAlignment = Alignm
 private fun DateAxis(shown: List<CheckIn>) = Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
     if (shown.isEmpty()) return@Row
     val style = MaterialTheme.typography.labelSmall
-    Text(LocalDate.parse(shown.first().date).format(fmt), style = style, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    if (shown.size > 1) Text(LocalDate.parse(shown.last().date).format(fmt), style = style, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Text(date(shown.first(), LocalStrings.current), style = style, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    if (shown.size > 1) Text(date(shown.last(), LocalStrings.current), style = style, color = MaterialTheme.colorScheme.onSurfaceVariant)
 }
 
 // Points at each day; consecutive days are joined, missing days leave a gap.

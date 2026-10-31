@@ -21,6 +21,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -31,6 +32,8 @@ import com.uncosens.mindwave.ui.AnalyzingScreen
 import com.uncosens.mindwave.ui.CalibrationIntroScreen
 import com.uncosens.mindwave.ui.HistoryScreen
 import com.uncosens.mindwave.ui.HomeScreen
+import com.uncosens.mindwave.ui.LanguageScreen
+import com.uncosens.mindwave.ui.LocalStrings
 import com.uncosens.mindwave.ui.MessageScreen
 import com.uncosens.mindwave.ui.MicDeniedScreen
 import com.uncosens.mindwave.ui.MindwaveTheme
@@ -82,10 +85,10 @@ class MainActivity : ComponentActivity() {
         )
         val version = packageManager.getPackageInfo(packageName, 0).versionName ?: ""
         setContent {
-            MindwaveTheme {
+            CompositionLocalProvider(LocalStrings provides vm.strings) { MindwaveTheme {
                 val s = vm.screen
                 val inCheckIn = s == Screen.ReadAnchor || s == Screen.ReadDaily || s == Screen.FreeTalk || s == Screen.Review || s == Screen.Mood
-                BackHandler(enabled = s != Screen.Home && s != Screen.Welcome && s != Screen.Analyzing) {
+                BackHandler(enabled = s != Screen.Home && s != Screen.Welcome && s != Screen.Language && s != Screen.Analyzing) {
                     if (inCheckIn) vm.confirmStop = true else vm.goHome()
                 }
                 if (micDenied) {
@@ -110,7 +113,8 @@ class MainActivity : ComponentActivity() {
                     label = "screen",
                 ) { shown ->
                     when (shown) {
-                        Screen.Loading -> MessageScreen("Preparing…")
+                        Screen.Loading -> MessageScreen(vm.strings.preparing)
+                        Screen.Language -> LanguageScreen(vm)
                         is Screen.Error -> MessageScreen(shown.text)
                         Screen.Welcome -> WelcomeScreen(vm, hasMic())
                         Screen.Permission -> PermissionScreen(vm, ::withMic)
@@ -126,7 +130,7 @@ class MainActivity : ComponentActivity() {
                         Screen.Settings -> SettingsScreen(vm, version)
                     }
                 }
-            }
+            } }
         }
     }
 }

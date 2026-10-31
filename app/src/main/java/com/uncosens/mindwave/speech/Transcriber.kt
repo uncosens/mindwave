@@ -2,6 +2,7 @@ package com.uncosens.mindwave.speech
 
 import android.content.Context
 import com.uncosens.mindwave.analysis.Word
+import com.uncosens.mindwave.data.Lang
 import org.json.JSONObject
 import org.vosk.Model
 import org.vosk.Recognizer
@@ -9,9 +10,11 @@ import java.io.File
 import java.util.concurrent.LinkedBlockingQueue
 import kotlin.concurrent.thread
 
-// Offline English speech-to-text with the bundled Vosk model.
+// Offline speech-to-text with the bundled Vosk model for the app language.
 class Transcriber(private val model: Model) {
     data class Result(val text: String, val words: List<Word>)
+
+    fun close() = model.close()
 
     fun transcribe(pcm: ShortArray): Result {
         val rec = Recognizer(model, 16000f)
@@ -83,15 +86,13 @@ class Transcriber(private val model: Model) {
     }
 
     companion object {
-        private const val ASSET_DIR = "model-en-us"
-
         // Vosk needs a real folder, so copy the model out of assets once.
-        fun load(context: Context): Transcriber {
-            val dir = File(context.filesDir, ASSET_DIR)
+        fun load(context: Context, lang: Lang): Transcriber {
+            val dir = File(context.filesDir, lang.modelDir)
             val done = File(dir, ".copied")
             if (!done.exists()) {
                 dir.deleteRecursively()
-                copyAssets(context, ASSET_DIR, dir)
+                copyAssets(context, lang.modelDir, dir)
                 done.createNewFile()
             }
             return Transcriber(Model(dir.absolutePath))
