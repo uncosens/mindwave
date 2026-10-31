@@ -485,13 +485,18 @@ All "Try again" actions restart only the current step.
 
 Files in `design/logo/` (preview: `design/logo/logo.html`).
 
-- **Mark:** the voice orb frozen in one moment (same blob formula as 5.3, phase 0.6, amp 0.07), Listening
-  gradient (`#4F6BFF` → `#9B7BFF`, cyan sheen top-left), with one white voice pulse inside that swells in
-  the middle and fades at both ends.
-- **App icon:** mark on `#0D0D10` with a soft blue glow. Android adaptive icon XML in `design/logo/android/`
-  → copy `ic_launcher_*.xml` to `res/drawable/` and `ic_launcher.xml` to `res/mipmap-anydpi-v26/`
-  (also as `ic_launcher_round.xml`). Includes a `monochrome` layer for Android 13 themed icons.
-- **Mono mark** (`mark-mono.svg`): silhouette with the pulse cut out; use below 24 px or on photos.
+- **Mark ("Slices"):** the voice orb (same blob formula as 5.3, phase 0.6, amp 0.07) cut into five slices.
+  The cuts bow outward and lean like meridians on a turning sphere; gaps widen toward the poles. The first
+  slice is small and set apart, and slice lengths differ like a voice at different loudness. Corner radius
+  20 (of 512).
+- **Color:** linear gradient bottom-left → top-right `#3554FF` → `#8366FF` → `#DB86F2`, plus a cyan
+  `#6FE3FF` sheen at 60% from the top-left. Always on white.
+- **App icon:** mark on white `#FFFFFF`, inside the 66 dp safe zone. Android adaptive icon XML in
+  `design/logo/android/` → copy `ic_launcher_*.xml` to `res/drawable/` and `ic_launcher.xml` to
+  `res/mipmap-anydpi-v26/` (also as `ic_launcher_round.xml`). Includes a `monochrome` layer for Android 13
+  themed icons.
+- **Mono mark** (`mark-mono.svg`): the slices as one color; use below 24 px.
 - **Lockup** (`lockup.svg`): mark + lowercase "mindwave", Roboto Regular, tracking −1.
   The text is live text; outline it before using outside the app.
-- Clear space = half the mark width. Never rotate, outline, or add shadows.
+- Clear space = half the mark width. Never rotate, outline, add shadows or change the slice shapes.
+- Other explored directions are kept for reference in `design/logo/concepts.html`.
